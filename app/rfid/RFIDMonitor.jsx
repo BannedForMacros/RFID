@@ -104,10 +104,9 @@ function TagRow({ tag, idx, onDelete, isNew }) {
     if (isNew) { const t = setTimeout(() => setFlash(false), 2500); return () => clearTimeout(t); }
   }, [isNew]);
 
-  const epc  = tag.epc  || tag.EPC  || tag.Epc  || "—";
-  const rssi = tag.rssi || tag.RSSI || tag.signal || "—";
-  const id   = tag.id   || tag.Id   || tag.ID   || idx;
-  const ts   = tag.timestamp || tag.Timestamp || tag.fecha || tag.readTime || null;
+  const epc  = tag.tagid || tag.epc  || tag.EPC  || "—";
+  const id   = tag.id    || tag.Id   || tag.ID   || idx;
+  const ts   = tag.fecha || tag.timestamp || tag.Timestamp || null;
 
   return (
     <tr style={{
@@ -125,11 +124,6 @@ function TagRow({ tag, idx, onDelete, isNew }) {
           {flash && <span style={{ color: THEME.accent, fontSize: 10, animation: "fadeIn 0.3s" }}>▶</span>}
           {epc}
         </span>
-      </td>
-      <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 12, color: THEME.muted }}>
-        {rssi !== "—" ? (
-          <span style={{ color: parseInt(rssi) > -60 ? THEME.accent : "#f59e0b" }}>{rssi} dBm</span>
-        ) : "—"}
       </td>
       <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 11, color: THEME.muted }}>
         {ts ? new Date(ts).toLocaleTimeString("es-PE", { hour12: false }) : new Date().toLocaleTimeString("es-PE", { hour12: false })}
@@ -255,8 +249,8 @@ export default function RFIDMonitor() {
       const lista = Array.isArray(data) ? data : (data.lecturas || data.data || data.tags || data.Items || []);
 
       setTags(prev => {
-        const prevIds = new Set(prev.map(t => t.epc || t.EPC || t.id || t.Id));
-        const incoming = new Set(lista.map(t => t.epc || t.EPC || t.id || t.Id));
+        const prevIds = new Set(prev.map(t => t.tagid || t.id));
+        const incoming = new Set(lista.map(t => t.tagid || t.id));
         const newOnes  = new Set([...incoming].filter(x => !prevIds.has(x)));
         if (newOnes.size > 0) {
           setNewTagIds(newOnes);
@@ -300,7 +294,7 @@ export default function RFIDMonitor() {
         headers: { "Content-Type": "application/json", "X-Auth-Token": token },
         body: JSON.stringify({ ope: 2, id }),
       });
-      setTags(prev => prev.filter(t => (t.id || t.Id || t.epc || t.EPC) !== id));
+      setTags(prev => prev.filter(t => t.id !== id));
       log(`✓ TAG ${id} eliminado`, "info");
     } catch (e) {
       log(`✗ Error eliminando TAG: ${e.message}`, "error");
@@ -565,7 +559,7 @@ export default function RFIDMonitor() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: `${THEME.brand}08` }}>
-                      {["#", "EPC / TAG ID", "RSSI", "Hora", "Acciones"].map(h => (
+                      {["#", "EPC / TAG ID", "Hora", "Acciones"].map(h => (
                         <th key={h} style={{
                           padding: "10px 16px", textAlign: "left",
                           fontSize: 11, color: THEME.muted, fontWeight: 700,
