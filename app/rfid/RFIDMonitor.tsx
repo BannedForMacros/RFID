@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { 
-  Play, Square, Trash2, Settings, ClipboardList, 
-  Activity, RefreshCw, Zap, Clock, WifiOff, X 
+import {
+  Play, Square, Trash2, Settings, ClipboardList,
+  Activity, RefreshCw, Zap, Clock, WifiOff, X, Download
 } from "lucide-react";
 
 // Importación de tus componentes estandarizados
@@ -158,6 +158,43 @@ export default function RFIDMonitor() {
     addLog(polling ? "⏸ Lectura pausada" : "▶ Lectura iniciada (2s)", polling ? "info" : "success");
   };
 
+  // ── 5. Descargar datos en CSV ──
+  const handleDownloadCSV = useCallback(() => {
+    if (tags.length === 0) {
+      addLog("✗ No hay datos para descargar", "error");
+      return;
+    }
+
+    const headers = ["#", "EPC / TAG ID", "Contador", "Hora Inicio", "Hora Fin", "IP Reader"];
+    const rows = tags.map((tag, idx) => [
+      idx + 1,
+      tag.tagid,
+      tag.contador,
+      tag.fecini ? new Date(tag.fecini).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—",
+      tag.fecfin ? new Date(tag.fecfin).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—",
+      tag.ipreader
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute("href", url);
+    link.setAttribute("download", `lecturas_rfid_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.csv`);
+    link.style.visibility = "hidden";
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    addLog(`✓ ${tags.length} registros descargados en CSV`, "success");
+  }, [tags, addLog]);
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a]">
       
@@ -224,10 +261,25 @@ export default function RFIDMonitor() {
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-8 py-5 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
             <h2 className="font-bold text-slate-700 flex items-center gap-2">🏷 Lecturas de Antena</h2>
-            <div className={`px-3 py-1 rounded-full text-[10px] font-bold border ${
-              status === 'reading' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 animate-pulse' : 'bg-slate-100 text-slate-500 border-slate-200'
-            }`}>
-              {status.toUpperCase()}
+            <div className="flex items-center gap-2">
+              <div className={`px-3 py-1 rounded-full text-[10px] font-bold border ${
+                status === 'reading' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 animate-pulse' : 'bg-slate-100 text-slate-500 border-slate-200'
+              }`}>
+                {status.toUpperCase()}
+              </div>
+              <button
+                onClick={handleDownloadCSV}
+                disabled={tags.length === 0}
+                className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-100 disabled:opacity-40 transition-all"
+              >
+                <Download size={14} /> Descargar CSV
+              </button>
+              <button
+                onClick={() => { setTags([]); setScanCount(0); addLog("Lista limpiada", "info"); }}
+                className="flex items-center gap-2 bg-white border border-slate-200 text-slate-500 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-all"
+              >
+                <Trash2 size={14} /> Limpiar
+              </button>
             </div>
           </div>
 
@@ -238,14 +290,15 @@ export default function RFIDMonitor() {
                   <th className="px-8 py-4">#</th>
                   <th className="px-8 py-4">EPC / TAG ID</th>
                   <th className="px-8 py-4 text-center">Contador</th>
-                  <th className="px-8 py-4">Hora</th>
+                  <th className="px-8 py-4">Hora Inicio</th>
+                  <th className="px-8 py-4">Hora Fin</th>
                   <th className="px-8 py-4 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {tags.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-20 text-center text-slate-400">
+                    <td colSpan={6} className="py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2 opacity-40">
                         <WifiOff size={40} />
                         <p className="font-medium">Esperando lecturas del reader...</p>
@@ -268,7 +321,10 @@ export default function RFIDMonitor() {
                           <span className="font-mono font-bold text-sm text-slate-600">{tag.contador ?? "—"}</span>
                         </td>
                         <td className="px-8 py-4 text-xs font-mono text-slate-500">
-                          {tag.fecini ? new Date(tag.fecini).toLocaleTimeString("es-PE", { hour12: false }) : new Date().toLocaleTimeString("es-PE", { hour12: false })}
+                          {tag.fecini ? new Date(tag.fecini).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—"}
+                        </td>
+                        <td className="px-8 py-4 text-xs font-mono text-slate-500">
+                          {tag.fecfin ? new Date(tag.fecfin).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—"}
                         </td>
                         <td className="px-8 py-4 text-center">
                           <button className="p-2 text-slate-300 hover:text-red-500 transition-colors">

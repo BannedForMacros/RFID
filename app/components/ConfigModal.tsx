@@ -38,7 +38,7 @@ export const ConfigModal = ({
           <input
             className="w-full p-2 border border-slate-200 rounded-lg text-sm font-sans focus:border-[#22c4a1] outline-none transition-all"
             value={config.baseUrl}
-            onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
+            onChange={(e) => setConfig({ ...config, baseUrl: e.target.value.replace(/\/$/, "") })}
             placeholder="https://abc123.ngrok.io"
           />
         </div>
