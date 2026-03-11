@@ -1,9 +1,9 @@
 export interface Tag {
-  id: string | number;
-  tagid?: string;
-  epc?: string;
-  fecha?: string;
-  timestamp?: string;
+  contador: number;
+  tagid: string;
+  fecini: string;
+  fecfin: string;
+  ipreader: string;
 }
 
 export type ReaderStatus = 'disconnected' | 'connecting' | 'connected' | 'reading' | 'error';

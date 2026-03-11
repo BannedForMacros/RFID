@@ -116,14 +116,14 @@ export default function RFIDMonitor() {
       const data = await apiFetch(`${config.baseUrl}/api/Rfid/listaActualizaLecturas`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-        body: JSON.stringify({ ope: 1, id: 0 }),
+        body: JSON.stringify({ ope: 1, tagid: "", ipreader: config.ipReader }),
       });
 
       const lista: Tag[] = Array.isArray(data) ? data : (data.lecturas || []);
 
       setTags(prev => {
-        const prevIds = new Set(prev.map(t => t.tagid || t.id));
-        const incomingIds = new Set(lista.map(t => t.tagid || t.id));
+        const prevIds = new Set(prev.map(t => t.tagid));
+        const incomingIds = new Set(lista.map(t => t.tagid));
         const newOnes = new Set([...incomingIds].filter(x => !prevIds.has(x)));
         
         if (newOnes.size > 0) {
@@ -139,7 +139,7 @@ export default function RFIDMonitor() {
     } catch (e: any) {
       addLog(`✗ Error polling: ${e.message}`, "error");
     }
-  }, [config.baseUrl, token, addLog]);
+  }, [config.baseUrl, config.ipReader, token, addLog]);
 
   useEffect(() => {
     if (polling) {
@@ -237,6 +237,7 @@ export default function RFIDMonitor() {
                 <tr className="text-[11px] uppercase tracking-widest text-slate-400 font-bold">
                   <th className="px-8 py-4">#</th>
                   <th className="px-8 py-4">EPC / TAG ID</th>
+                  <th className="px-8 py-4 text-center">Contador</th>
                   <th className="px-8 py-4">Hora</th>
                   <th className="px-8 py-4 text-center">Acciones</th>
                 </tr>
@@ -244,7 +245,7 @@ export default function RFIDMonitor() {
               <tbody className="divide-y divide-slate-50">
                 {tags.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-20 text-center text-slate-400">
+                    <td colSpan={5} className="py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2 opacity-40">
                         <WifiOff size={40} />
                         <p className="font-medium">Esperando lecturas del reader...</p>
@@ -253,7 +254,7 @@ export default function RFIDMonitor() {
                   </tr>
                 ) : (
                   tags.map((tag, idx) => {
-                    const id = tag.tagid || tag.epc || tag.id;
+                    const id = tag.tagid;
                     const isNew = newTagIds.has(id);
                     return (
                       <tr key={id} className={`group transition-colors ${isNew ? 'bg-emerald-50/30' : 'hover:bg-slate-50/50'}`}>
@@ -263,8 +264,11 @@ export default function RFIDMonitor() {
                             {id}
                           </span>
                         </td>
+                        <td className="px-8 py-4 text-center">
+                          <span className="font-mono font-bold text-sm text-slate-600">{tag.contador ?? "—"}</span>
+                        </td>
                         <td className="px-8 py-4 text-xs font-mono text-slate-500">
-                          {tag.fecha || new Date().toLocaleTimeString("es-PE", { hour12: false })}
+                          {tag.fecini ? new Date(tag.fecini).toLocaleTimeString("es-PE", { hour12: false }) : new Date().toLocaleTimeString("es-PE", { hour12: false })}
                         </td>
                         <td className="px-8 py-4 text-center">
                           <button className="p-2 text-slate-300 hover:text-red-500 transition-colors">
