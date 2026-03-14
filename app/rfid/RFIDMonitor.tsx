@@ -47,7 +47,13 @@ export default function RFIDMonitor() {
 
   // ── Fetch Helper ──
   const apiFetch = async (url: string, options: any = {}) => {
-    const res = await fetch(url, options);
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        "ngrok-skip-browser-warning": "true",
+        ...options.headers,
+      },
+    });
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`HTTP ${res.status}: ${text}`);
@@ -158,7 +164,25 @@ export default function RFIDMonitor() {
     addLog(polling ? "⏸ Lectura pausada" : "▶ Lectura iniciada (2s)", polling ? "info" : "success");
   };
 
-  // ── 5. Descargar datos en CSV ──
+  // ── 5. Limpiar vista (ope: 3) ──
+  const handleClearView = useCallback(async () => {
+    try {
+      if (token) {
+        await apiFetch(`${config.baseUrl}/api/Rfid/listaActualizaLecturas`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+          body: JSON.stringify({ ope: 3, tagid: "", ipreader: config.ipReader }),
+        });
+      }
+      setTags([]);
+      setScanCount(0);
+      addLog("Lista limpiada", "info");
+    } catch (e: any) {
+      addLog(`✗ Error al limpiar: ${e.message}`, "error");
+    }
+  }, [config.baseUrl, config.ipReader, token, addLog]);
+
+  // ── 6. Descargar datos en CSV ──
   const handleDownloadCSV = useCallback(() => {
     if (tags.length === 0) {
       addLog("✗ No hay datos para descargar", "error");
@@ -193,6 +217,36 @@ export default function RFIDMonitor() {
     document.body.removeChild(link);
 
     addLog(`✓ ${tags.length} registros descargados en CSV`, "success");
+  }, [tags, addLog]);
+
+  // ── 7. Descargar datos en TXT ──
+  const handleDownloadTXT = useCallback(() => {
+    if (tags.length === 0) {
+      addLog("✗ No hay datos para descargar", "error");
+      return;
+    }
+
+    const lines = tags.map((tag, idx) => {
+      const ini = tag.fecini ? new Date(tag.fecini).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—";
+      const fin = tag.fecfin ? new Date(tag.fecfin).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—";
+      return `${idx + 1}\t${tag.tagid}\t${tag.contador}\t${ini}\t${fin}\t${tag.ipreader}`;
+    });
+
+    const txtContent = ["#\tEPC / TAG ID\tContador\tHora Inicio\tHora Fin\tIP Reader", ...lines].join("\n");
+
+    const blob = new Blob([txtContent], { type: "text/plain;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute("href", url);
+    link.setAttribute("download", `lecturas_rfid_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.txt`);
+    link.style.visibility = "hidden";
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    addLog(`✓ ${tags.length} registros descargados en TXT`, "success");
   }, [tags, addLog]);
 
   return (
@@ -249,8 +303,8 @@ export default function RFIDMonitor() {
             {polling ? <><Square fill="white" size={20} /> DETENER LECTURA</> : <><Play fill="white" size={20} /> INICIAR LECTURA EN VIVO</>}
           </button>
           
-          <button 
-            onClick={() => { setTags([]); setScanCount(0); addLog("Lista limpiada", "info"); }}
+          <button
+            onClick={handleClearView}
             className="flex-1 bg-white border-2 border-slate-200 rounded-2xl font-bold text-slate-500 flex items-center justify-center gap-2 hover:bg-slate-50 transition-all"
           >
             <Trash2 size={20} /> LIMPIAR VISTA
@@ -275,7 +329,14 @@ export default function RFIDMonitor() {
                 <Download size={14} /> Descargar CSV
               </button>
               <button
-                onClick={() => { setTags([]); setScanCount(0); addLog("Lista limpiada", "info"); }}
+                onClick={handleDownloadTXT}
+                disabled={tags.length === 0}
+                className="flex items-center gap-2 bg-violet-50 border border-violet-200 text-violet-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-violet-100 disabled:opacity-40 transition-all"
+              >
+                <Download size={14} /> Descargar TXT
+              </button>
+              <button
+                onClick={handleClearView}
                 className="flex items-center gap-2 bg-white border border-slate-200 text-slate-500 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-all"
               >
                 <Trash2 size={14} /> Limpiar
