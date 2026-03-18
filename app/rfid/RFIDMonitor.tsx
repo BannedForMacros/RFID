@@ -3,55 +3,123 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Play, Square, Trash2, Settings, ClipboardList,
-  Activity, RefreshCw, Zap, Clock, WifiOff, X, Download
+  Activity, RefreshCw, Zap, Clock, Wifi, WifiOff, X, Download, Loader2,
 } from "lucide-react";
 
-// Importación de tus componentes estandarizados
 import { StatCard } from "../components/StatCard";
 import { ConfigModal } from "../components/ConfigModal";
 import Modal from "../components/Modal";
+import { mockApi } from "../lib/mockApi";
 
-// Importación de tipos
-import { Tag, ReaderStatus, LogEntry } from "../../types/rfid";
+import type {
+  Tag,
+  ReaderStatus,
+  LogEntry,
+  ReaderConfig,
+  ReaderRuntimeState,
+  GlobalConfig,
+} from "../../types/rfid";
+
+// ── Constantes ──────────────────────────────────────────────────────────────
+
+const DEFAULT_READER_STATE: ReaderRuntimeState = {
+  status: "disconnected",
+  tags: [],
+  newTagIds: [],
+  scanCount: 0,
+  lastUpdate: null,
+};
+
+const STATUS_DOT: Record<ReaderStatus, string> = {
+  disconnected: "bg-slate-300",
+  connecting:   "bg-yellow-400 animate-pulse",
+  connected:    "bg-blue-500",
+  reading:      "bg-emerald-500 animate-pulse",
+  error:        "bg-red-500",
+  testing:      "bg-violet-500 animate-pulse",
+};
+
+function genId() {
+  return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// ── Componente principal ─────────────────────────────────────────────────────
 
 export default function RFIDMonitor() {
-  // ── Configuración (Mismos estados que el original) ──
-  const [config, setConfig] = useState({
+
+  // ── Config global ──
+  const [globalConfig, setGlobalConfig] = useState<GlobalConfig>({
     baseUrl: "https://abc123.ngrok.io",
     dias: 1,
-    ipReader: "192.168.1.100",
-    potencia: 20,
-    tLectura: 10,
+    mockMode: true,
   });
 
+  // ── Lista de readers ──
+  const [readers, setReaders] = useState<ReaderConfig[]>([
+    {
+      id: "r_default",
+      name: "Reader 1",
+      ip: "192.168.1.100",
+      antenas: [
+        { numero: 1, nombre: "Antena 1", potencia: 20 },
+        { numero: 2, nombre: "Antena 2", potencia: 20 },
+      ],
+    },
+  ]);
+
+  // ── Estado en tiempo real por reader { [id]: ReaderRuntimeState } ──
+  const [readerStates, setReaderStates] = useState<Record<string, ReaderRuntimeState>>({});
+
+  // ── Tab activa ──
+  const [activeReaderId, setActiveReaderId] = useState<string>("r_default");
+
+  // ── Token y control ──
   const [token, setToken] = useState("");
-  
-  // ── Estados de Interfaz y Control ──
+  const [polling, setPolling] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
-  const [status, setStatus] = useState<ReaderStatus>("disconnected");
-  const [tags, setTags] = useState<Tag[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [polling, setPolling] = useState(false);
-  const [scanCount, setScanCount] = useState(0);
-  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
-  const [newTagIds, setNewTagIds] = useState<Set<string | number>>(new Set());
 
+  // ── Refs para evitar closures stale en el polling ──
+  const readersRef = useRef(readers);
+  const readerStatesRef = useRef(readerStates);
+  const globalConfigRef = useRef(globalConfig);
+  const tokenRef = useRef(token);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ── Helper: Log (Identico a tu lógica) ──
-  const addLog = useCallback((msg: string, type: LogEntry["type"] = "default") => {
-    const time = new Date().toLocaleTimeString("es-PE", { hour12: false });
-    setLogs(prev => [{ msg, type, time }, ...prev].slice(0, 80));
-  }, []);
+  useEffect(() => { readersRef.current = readers; },          [readers]);
+  useEffect(() => { readerStatesRef.current = readerStates; }, [readerStates]);
+  useEffect(() => { globalConfigRef.current = globalConfig; }, [globalConfig]);
+  useEffect(() => { tokenRef.current = token; },              [token]);
 
-  // ── Fetch Helper ──
-  const apiFetch = async (url: string, options: any = {}) => {
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  const addLog = useCallback(
+    (msg: string, type: LogEntry["type"] = "default") => {
+      const time = new Date().toLocaleTimeString("es-PE", { hour12: false });
+      setLogs((prev) => [{ msg, type, time }, ...prev].slice(0, 80));
+    },
+    []
+  );
+  const addLogRef = useRef(addLog);
+  useEffect(() => { addLogRef.current = addLog; }, [addLog]);
+
+  const updateReader = (
+    id: string,
+    updater: (prev: ReaderRuntimeState) => Partial<ReaderRuntimeState>
+  ) => {
+    setReaderStates((prev) => {
+      const current = prev[id] ?? DEFAULT_READER_STATE;
+      return { ...prev, [id]: { ...current, ...updater(current) } };
+    });
+  };
+
+  const apiFetch = async (url: string, options: RequestInit = {}) => {
     const res = await fetch(url, {
       ...options,
       headers: {
         "ngrok-skip-browser-warning": "true",
-        ...options.headers,
+        ...(options.headers as Record<string, string>),
       },
     });
     if (!res.ok) {
@@ -61,198 +129,336 @@ export default function RFIDMonitor() {
     return res.json();
   };
 
-  // ── 1. Generar Token ──
+  // ── 1. Generar Token ──────────────────────────────────────────────────────
+
   const handleGenerateToken = async () => {
     try {
       addLog("Generando token...", "info");
-      const url = `${config.baseUrl}/api/Rfid/generate-token?dias=${config.dias}`;
-      const data = await apiFetch(url, { method: "POST" });
-      const t = data.token || data.access_token || JSON.stringify(data);
+      let t: string;
+      if (globalConfig.mockMode) {
+        t = await mockApi.generateToken(globalConfig.dias);
+      } else {
+        const url = `${globalConfig.baseUrl}/api/Rfid/generate-token?dias=${globalConfig.dias}`;
+        const data = await apiFetch(url, { method: "POST" });
+        t = data.token || data.access_token || JSON.stringify(data);
+      }
       setToken(t);
-      addLog(`✓ Token generado (${config.dias} días)`, "success");
-    } catch (e: any) {
-      addLog(`✗ Error token: ${e.message}`, "error");
+      addLog(`✓ Token generado (${globalConfig.dias} día${globalConfig.dias !== 1 ? "s" : ""})`, "success");
+    } catch (e: unknown) {
+      addLog(`✗ Error token: ${(e as Error).message}`, "error");
     }
   };
 
-  // ── 2. Conectar Reader ──
-  const handleConnect = async () => {
-    if (!token) return addLog("✗ Primero genera un token", "error");
-    setStatus("connecting");
+  // ── 2. Conectar un reader ─────────────────────────────────────────────────
+
+  const handleConnect = async (readerId: string) => {
+    const reader = readersRef.current.find((r) => r.id === readerId);
+    if (!reader) return;
+    if (!tokenRef.current && !globalConfigRef.current.mockMode) {
+      addLog("✗ Primero genera un token", "error");
+      return;
+    }
+    updateReader(readerId, () => ({ status: "connecting" }));
+    addLog(`Conectando a ${reader.name} (${reader.ip})...`, "info");
     try {
-      addLog(`Conectando a reader ${config.ipReader}...`, "info");
-      await apiFetch(`${config.baseUrl}/api/Rfid/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-        body: JSON.stringify({ 
-          ipreader: config.ipReader, 
-          potenciaDbm: Number(config.potencia), 
-          tlectura: Number(config.tLectura) 
-        }),
-      });
-      setStatus("connected");
-      addLog(`✓ Conectado a ${config.ipReader}`, "success");
-    } catch (e: any) {
-      setStatus("error");
-      addLog(`✗ Error conectando: ${e.message}`, "error");
+      if (globalConfig.mockMode) {
+        await mockApi.connect(reader.ip);
+      } else {
+        await apiFetch(`${globalConfig.baseUrl}/api/Rfid/connect`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+          body: JSON.stringify({
+            ipreader: reader.ip,
+            antenas: reader.antenas.map((a) => ({
+              numero: a.numero,
+              potenciaDbm: a.potencia,
+            })),
+          }),
+        });
+      }
+      updateReader(readerId, () => ({ status: "connected" }));
+      addLog(`✓ ${reader.name} conectado`, "success");
+    } catch (e: unknown) {
+      updateReader(readerId, () => ({ status: "error" }));
+      addLog(`✗ Error conectando ${reader.name}: ${(e as Error).message}`, "error");
     }
   };
 
-  // ── 3. Desconectar Reader ──
-  const handleDisconnect = async () => {
-    setPolling(false);
+  // ── 3. Desconectar un reader ──────────────────────────────────────────────
+
+  const handleDisconnect = async (readerId: string) => {
+    const reader = readersRef.current.find((r) => r.id === readerId);
+    if (!reader) return;
     try {
-      await apiFetch(`${config.baseUrl}/api/Rfid/disconnect`, {
-        method: "POST",
-        headers: { "X-Auth-Token": token },
-      });
-      setStatus("disconnected");
-      setTags([]);
-      addLog("✓ Reader desconectado correctamente", "info");
-    } catch (e: any) {
-      setStatus("disconnected");
-      addLog(`Desconectado (${e.message})`, "info");
+      if (globalConfig.mockMode) {
+        await mockApi.disconnect(reader.ip);
+      } else {
+        await apiFetch(`${globalConfig.baseUrl}/api/Rfid/disconnect`, {
+          method: "POST",
+          headers: { "X-Auth-Token": token },
+        });
+      }
+    } catch {
+      // ignorar error al desconectar
     }
+    updateReader(readerId, () => ({ status: "disconnected", tags: [] }));
+    addLog(`✓ ${reader.name} desconectado`, "info");
   };
 
-  // ── 4. Polling de lecturas ──
-  const fetchTags = useCallback(async () => {
-    if (!token) return;
+  // ── 4. Probar conexión ────────────────────────────────────────────────────
+
+  const handleTestReader = async (
+    readerId: string
+  ): Promise<{ ok: boolean; latencyMs: number }> => {
+    const reader = readersRef.current.find((r) => r.id === readerId);
+    if (!reader) throw new Error("Reader no encontrado");
+    addLog(`Probando comunicación con ${reader.name} (${reader.ip})...`, "info");
     try {
-      const data = await apiFetch(`${config.baseUrl}/api/Rfid/listaActualizaLecturas`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-        body: JSON.stringify({ ope: 1, tagid: "", ipreader: config.ipReader }),
-      });
-
-      const lista: Tag[] = Array.isArray(data) ? data : (data.lecturas || []);
-
-      setTags(prev => {
-        const prevIds = new Set(prev.map(t => t.tagid));
-        const incomingIds = new Set(lista.map(t => t.tagid));
-        const newOnes = new Set([...incomingIds].filter(x => !prevIds.has(x)));
-        
-        if (newOnes.size > 0) {
-          setNewTagIds(newOnes);
-          setScanCount(c => c + newOnes.size);
-          addLog(`▶ ${newOnes.size} TAG(s) detectado(s)`, "success");
+      let result: { ok: boolean; latencyMs: number };
+      if (globalConfigRef.current.mockMode) {
+        result = await mockApi.testConnection(reader.ip);
+      } else {
+        const start = Date.now();
+        try {
+          await fetch(globalConfigRef.current.baseUrl, {
+            method: "HEAD",
+            signal: AbortSignal.timeout(3000),
+          });
+          result = { ok: true, latencyMs: Date.now() - start };
+        } catch {
+          result = { ok: false, latencyMs: 0 };
         }
-        return lista;
-      });
-
-      setLastUpdate(new Date().toLocaleTimeString("es-PE", { hour12: false }));
-      setStatus("reading");
-    } catch (e: any) {
-      addLog(`✗ Error polling: ${e.message}`, "error");
+      }
+      if (result.ok) {
+        addLog(`✓ ${reader.name}: Comunicación OK (${result.latencyMs}ms)`, "success");
+      } else {
+        addLog(`✗ ${reader.name}: Sin respuesta`, "error");
+      }
+      return result;
+    } catch (e: unknown) {
+      addLog(`✗ Error probando ${reader.name}: ${(e as Error).message}`, "error");
+      return { ok: false, latencyMs: 0 };
     }
-  }, [config.baseUrl, config.ipReader, token, addLog]);
+  };
+
+  // ── 5. Polling (todos los readers conectados) ─────────────────────────────
+
+  const pollAllReaders = useCallback(async () => {
+    const currentReaders = readersRef.current;
+    const { baseUrl, mockMode } = globalConfigRef.current;
+    const t = tokenRef.current;
+    const log = addLogRef.current;
+
+    const active = currentReaders.filter((r) => {
+      const s = readerStatesRef.current[r.id]?.status;
+      return s === "connected" || s === "reading";
+    });
+
+    if (active.length === 0) return;
+
+    await Promise.all(
+      active.map(async (reader) => {
+        try {
+          let lista: Tag[];
+          if (mockMode) {
+            lista = await mockApi.listReadings(reader.ip);
+          } else {
+            const data = await apiFetch(`${baseUrl}/api/Rfid/listaActualizaLecturas`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Auth-Token": t },
+              body: JSON.stringify({ ope: 1, tagid: "", ipreader: reader.ip }),
+            });
+            lista = Array.isArray(data) ? data : data.lecturas ?? [];
+          }
+
+          // Detectar nuevos tags antes del setState
+          const prevTags = readerStatesRef.current[reader.id]?.tags ?? [];
+          const prevSet = new Set(prevTags.map((tg) => tg.tagid));
+          const newOnes = lista.filter((tg) => !prevSet.has(tg.tagid));
+
+          if (newOnes.length > 0) {
+            log(`▶ [${reader.name}] ${newOnes.length} TAG(s) nuevo(s)`, "success");
+          }
+
+          setReaderStates((prev) => {
+            const cur = prev[reader.id] ?? DEFAULT_READER_STATE;
+            return {
+              ...prev,
+              [reader.id]: {
+                ...cur,
+                tags: lista,
+                newTagIds: newOnes.map((tg) => tg.tagid),
+                scanCount: cur.scanCount + newOnes.length,
+                lastUpdate: new Date().toLocaleTimeString("es-PE", { hour12: false }),
+                status: "reading",
+              },
+            };
+          });
+        } catch (e: unknown) {
+          log(`✗ [${reader.name}] Error polling: ${(e as Error).message}`, "error");
+        }
+      })
+    );
+  }, []); // usa refs → sin dependencias
 
   useEffect(() => {
     if (polling) {
-      fetchTags();
-      pollRef.current = setInterval(fetchTags, 2000);
+      pollAllReaders();
+      pollRef.current = setInterval(pollAllReaders, 2000);
     } else {
       if (pollRef.current) clearInterval(pollRef.current);
-      if (status === "reading") setStatus("connected");
+      // Readers que estaban leyendo pasan a "connected"
+      setReaderStates((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((id) => {
+          if (next[id].status === "reading") {
+            next[id] = { ...next[id], status: "connected" };
+          }
+        });
+        return next;
+      });
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [polling, fetchTags, status]);
+  }, [polling, pollAllReaders]);
 
   const togglePolling = () => {
-    if (!token) return addLog("✗ Primero genera token y conecta", "error");
-    setPolling(!polling);
-    addLog(polling ? "⏸ Lectura pausada" : "▶ Lectura iniciada (2s)", polling ? "info" : "success");
+    const anyConnected = readers.some((r) => {
+      const s = readerStates[r.id]?.status;
+      return s === "connected" || s === "reading";
+    });
+    if (!anyConnected) {
+      addLog("✗ Conecta al menos un reader antes de iniciar lectura", "error");
+      return;
+    }
+    setPolling((p) => {
+      addLog(!p ? "▶ Lectura iniciada (intervalo 2s)" : "⏸ Lectura pausada", !p ? "success" : "info");
+      return !p;
+    });
   };
 
-  // ── 5. Limpiar vista (ope: 3) ──
+  // ── 6. Limpiar vista del reader activo ────────────────────────────────────
+
   const handleClearView = useCallback(async () => {
+    const reader = readersRef.current.find((r) => r.id === activeReaderId);
+    if (!reader) return;
     try {
-      if (token) {
-        await apiFetch(`${config.baseUrl}/api/Rfid/listaActualizaLecturas`, {
+      if (globalConfigRef.current.mockMode) {
+        await mockApi.clearReadings(reader.ip);
+      } else if (tokenRef.current) {
+        await apiFetch(`${globalConfigRef.current.baseUrl}/api/Rfid/listaActualizaLecturas`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-          body: JSON.stringify({ ope: 3, tagid: "", ipreader: config.ipReader }),
+          headers: { "Content-Type": "application/json", "X-Auth-Token": tokenRef.current },
+          body: JSON.stringify({ ope: 3, tagid: "", ipreader: reader.ip }),
         });
       }
-      setTags([]);
-      setScanCount(0);
-      addLog("Lista limpiada", "info");
-    } catch (e: any) {
-      addLog(`✗ Error al limpiar: ${e.message}`, "error");
+    } catch {
+      // ignorar
     }
-  }, [config.baseUrl, config.ipReader, token, addLog]);
+    updateReader(activeReaderId, () => ({ tags: [], newTagIds: [], scanCount: 0 }));
+    addLog(`Lista de ${reader.name} limpiada`, "info");
+  }, [activeReaderId, addLog]);
 
-  // ── 6. Descargar datos en CSV ──
+  // ── 7. Descargar CSV ──────────────────────────────────────────────────────
+
   const handleDownloadCSV = useCallback(() => {
-    if (tags.length === 0) {
-      addLog("✗ No hay datos para descargar", "error");
-      return;
-    }
+    const activeTags = readerStates[activeReaderId]?.tags ?? [];
+    if (activeTags.length === 0) { addLog("✗ No hay datos para descargar", "error"); return; }
+
+    const fmt = (d: string) =>
+      d ? new Date(d).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—";
 
     const headers = ["#", "EPC / TAG ID", "Contador", "Hora Inicio", "Hora Fin", "IP Reader"];
-    const rows = tags.map((tag, idx) => [
-      idx + 1,
-      tag.tagid,
-      tag.contador,
-      tag.fecini ? new Date(tag.fecini).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—",
-      tag.fecfin ? new Date(tag.fecfin).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—",
-      tag.ipreader
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const rows = activeTags.map((tag, idx) =>
+      [idx + 1, tag.tagid, tag.contador, fmt(tag.fecini), fmt(tag.fecfin), tag.ipreader]
+        .map((c) => `"${c}"`)
+        .join(",")
+    );
+    const blob = new Blob([[headers.join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-
-    link.setAttribute("href", url);
-    link.setAttribute("download", `lecturas_rfid_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.csv`);
-    link.style.visibility = "hidden";
-
+    link.href = URL.createObjectURL(blob);
+    link.download = `lecturas_rfid_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    addLog(`✓ ${activeTags.length} registros descargados en CSV`, "success");
+  }, [readerStates, activeReaderId, addLog]);
 
-    addLog(`✓ ${tags.length} registros descargados en CSV`, "success");
-  }, [tags, addLog]);
+  // ── 8. Descargar TXT ──────────────────────────────────────────────────────
 
-  // ── 7. Descargar datos en TXT ──
   const handleDownloadTXT = useCallback(() => {
-    if (tags.length === 0) {
-      addLog("✗ No hay datos para descargar", "error");
-      return;
-    }
+    const activeTags = readerStates[activeReaderId]?.tags ?? [];
+    if (activeTags.length === 0) { addLog("✗ No hay datos para descargar", "error"); return; }
 
-    const lines = tags.map((tag, idx) => {
-      const ini = tag.fecini ? new Date(tag.fecini).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—";
-      const fin = tag.fecfin ? new Date(tag.fecfin).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—";
-      return `${idx + 1}\t${tag.tagid}\t${tag.contador}\t${ini}\t${fin}\t${tag.ipreader}`;
-    });
+    const fmt = (d: string) =>
+      d ? new Date(d).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—";
 
-    const txtContent = ["#\tEPC / TAG ID\tContador\tHora Inicio\tHora Fin\tIP Reader", ...lines].join("\n");
-
-    const blob = new Blob([txtContent], { type: "text/plain;charset=utf-8;" });
+    const lines = activeTags.map((tag, idx) =>
+      `${idx + 1}\t${tag.tagid}\t${tag.contador}\t${fmt(tag.fecini)}\t${fmt(tag.fecfin)}\t${tag.ipreader}`
+    );
+    const blob = new Blob(
+      [["#\tEPC / TAG ID\tContador\tHora Inicio\tHora Fin\tIP Reader", ...lines].join("\n")],
+      { type: "text/plain;charset=utf-8;" }
+    );
     const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-
-    link.setAttribute("href", url);
-    link.setAttribute("download", `lecturas_rfid_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.txt`);
-    link.style.visibility = "hidden";
-
+    link.href = URL.createObjectURL(blob);
+    link.download = `lecturas_rfid_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    addLog(`✓ ${activeTags.length} registros descargados en TXT`, "success");
+  }, [readerStates, activeReaderId, addLog]);
 
-    addLog(`✓ ${tags.length} registros descargados en TXT`, "success");
-  }, [tags, addLog]);
+  // ── 9. CRUD de readers ────────────────────────────────────────────────────
+
+  const handleAddReader = () => {
+    const id = genId();
+    const num = readers.length + 1;
+    setReaders((prev) => [
+      ...prev,
+      {
+        id,
+        name: `Reader ${num}`,
+        ip: "192.168.1.100",
+        antenas: [{ numero: 1, nombre: "Antena 1", potencia: 20 }],
+      },
+    ]);
+    setActiveReaderId(id);
+    addLog(`Reader ${num} agregado`, "info");
+  };
+
+  const handleRemoveReader = (id: string) => {
+    setReaders((prev) => prev.filter((r) => r.id !== id));
+    setReaderStates((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    if (activeReaderId === id) {
+      const remaining = readers.filter((r) => r.id !== id);
+      setActiveReaderId(remaining[0]?.id ?? "");
+    }
+    addLog("Reader eliminado", "info");
+  };
+
+  const handleUpdateReader = (id: string, updates: Partial<ReaderConfig>) => {
+    setReaders((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+  };
+
+  // ── Datos del tab activo ──────────────────────────────────────────────────
+
+  const activeState = readerStates[activeReaderId] ?? DEFAULT_READER_STATE;
+  const activeTags  = activeState.tags;
+
+  // Stats globales
+  const totalTags   = Object.values(readerStates).reduce((sum, s) => sum + s.tags.length, 0);
+  const totalNew    = Object.values(readerStates).reduce((sum, s) => sum + s.scanCount, 0);
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a]">
-      
-      {/* ── NAVBAR DBPERU ── */}
+
+      {/* NAVBAR */}
       <nav className="bg-gradient-to-r from-[#003366] to-[#1e4786] text-white px-8 h-16 flex items-center justify-between shadow-lg sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <div className="bg-[#22c4a1]/20 p-2 rounded-lg border border-[#22c4a1]/50">
@@ -260,19 +466,23 @@ export default function RFIDMonitor() {
           </div>
           <div>
             <h1 className="font-extrabold text-lg tracking-tight">RFID MONITOR</h1>
-            <p className="text-[10px] text-[#22c4a1] font-mono tracking-widest">DBPERU · REAL TIME</p>
+            <p className="text-[10px] text-[#22c4a1] font-mono tracking-widest">
+              DBPERU · REAL TIME · {readers.length} READER{readers.length !== 1 ? "S" : ""}
+              {globalConfig.mockMode && " · SIMULACIÓN"}
+            </p>
           </div>
         </div>
-
         <div className="flex items-center gap-2">
-          <button 
+          <button
             onClick={() => setIsLogOpen(true)}
             className="p-2 hover:bg-white/10 rounded-full transition-colors relative"
           >
             <ClipboardList size={22} />
-            {logs.length > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-orange-500 rounded-full border border-[#1e4786]" />}
+            {logs.length > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-orange-500 rounded-full border border-[#1e4786]" />
+            )}
           </button>
-          <button 
+          <button
             onClick={() => setIsConfigOpen(true)}
             className="p-2 hover:bg-white/10 rounded-full transition-colors"
           >
@@ -282,27 +492,29 @@ export default function RFIDMonitor() {
       </nav>
 
       <main className="max-w-7xl mx-auto p-6 lg:p-8 space-y-6">
-        
-        {/* ── STATS (Usando StatCard.tsx) ── */}
+
+        {/* STATS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="TAGs Detectados" value={tags.length} icon={Activity} color="#1e4786" />
-          <StatCard label="Nuevos (Sesión)" value={scanCount} icon={RefreshCw} color="#22c4a1" />
-          <StatCard label="Intervalo" value="2.0s" icon={Clock} color="#64748b" />
-          <StatCard label="Última Sinc" value={lastUpdate || "--:--"} icon={Zap} color="#f59e0b" />
+          <StatCard label="TAGs Detectados (total)" value={totalTags}               icon={Activity}   color="#1e4786" />
+          <StatCard label="Nuevos (Sesión)"          value={totalNew}                icon={RefreshCw}  color="#22c4a1" />
+          <StatCard label="Intervalo"                value="2.0s"                    icon={Clock}      color="#64748b" />
+          <StatCard label="Última Sinc"              value={activeState.lastUpdate ?? "--:--"} icon={Zap} color="#f59e0b" />
         </div>
 
-        {/* ── CONTROLES ── */}
+        {/* CONTROLES */}
         <div className="flex flex-col md:flex-row gap-4">
-          <button 
+          <button
             onClick={togglePolling}
-            disabled={status === "disconnected" || status === "error"}
-            className={`flex-[2] py-4 rounded-2xl font-black text-white flex items-center justify-center gap-3 transition-all shadow-lg active:scale-[0.98] disabled:opacity-40 ${
-              polling ? 'bg-red-500 shadow-red-200' : 'bg-[#22c4a1] shadow-emerald-100 hover:brightness-105'
+            className={`flex-[2] py-4 rounded-2xl font-black text-white flex items-center justify-center gap-3 transition-all shadow-lg active:scale-[0.98] ${
+              polling
+                ? "bg-red-500 shadow-red-200"
+                : "bg-[#22c4a1] shadow-emerald-100 hover:brightness-105"
             }`}
           >
-            {polling ? <><Square fill="white" size={20} /> DETENER LECTURA</> : <><Play fill="white" size={20} /> INICIAR LECTURA EN VIVO</>}
+            {polling
+              ? <><Square fill="white" size={20} /> DETENER LECTURA</>
+              : <><Play fill="white" size={20} /> INICIAR LECTURA EN VIVO</>}
           </button>
-          
           <button
             onClick={handleClearView}
             className="flex-1 bg-white border-2 border-slate-200 rounded-2xl font-bold text-slate-500 flex items-center justify-center gap-2 hover:bg-slate-50 transition-all"
@@ -311,39 +523,120 @@ export default function RFIDMonitor() {
           </button>
         </div>
 
-        {/* ── TABLA DE DATOS ── */}
+        {/* TABLA CON TABS DE READERS */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="px-8 py-5 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-            <h2 className="font-bold text-slate-700 flex items-center gap-2">🏷 Lecturas de Antena</h2>
-            <div className="flex items-center gap-2">
-              <div className={`px-3 py-1 rounded-full text-[10px] font-bold border ${
-                status === 'reading' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 animate-pulse' : 'bg-slate-100 text-slate-500 border-slate-200'
-              }`}>
-                {status.toUpperCase()}
+
+          {/* ── TABS ── */}
+          <div className="flex items-end gap-0 border-b border-slate-200 px-4 pt-4 overflow-x-auto">
+            {readers.map((reader) => {
+              const st = readerStates[reader.id]?.status ?? "disconnected";
+              const count = readerStates[reader.id]?.tags.length ?? 0;
+              const isActive = reader.id === activeReaderId;
+              return (
+                <button
+                  key={reader.id}
+                  onClick={() => setActiveReaderId(reader.id)}
+                  className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-all -mb-px ${
+                    isActive
+                      ? "border-[#1e4786] text-[#1e4786] bg-white"
+                      : "border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[st]}`} />
+                  <span>{reader.name}</span>
+                  <span className="text-[10px] text-slate-400 font-mono">{reader.ip}</span>
+                  {count > 0 && (
+                    <span
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                        isActive
+                          ? "bg-[#1e4786] text-white"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            {readers.length === 0 && (
+              <span className="px-4 py-2.5 text-sm text-slate-400 italic">
+                Sin readers — abre Configuración para agregar
+              </span>
+            )}
+          </div>
+
+          {/* ── HEADER DE TABLA ── */}
+          <div className="px-8 py-4 bg-slate-50/50 flex justify-between items-center flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-bold text-slate-700 flex items-center gap-2">
+                🏷 Lecturas —{" "}
+                <span className="text-[#1e4786]">
+                  {readers.find((r) => r.id === activeReaderId)?.name ?? "—"}
+                </span>
+              </h2>
+              <div
+                className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${
+                  activeState.status === "reading"
+                    ? "bg-emerald-50 text-emerald-600 border-emerald-200 animate-pulse"
+                    : "bg-slate-100 text-slate-500 border-slate-200"
+                }`}
+              >
+                {activeState.status.toUpperCase()}
               </div>
+
+              {/* Conectar / Desconectar del reader activo */}
+              {(() => {
+                const isConn = activeState.status === "connected" || activeState.status === "reading";
+                const isBusy = activeState.status === "connecting" || activeState.status === "testing";
+                return !isConn ? (
+                  <button
+                    onClick={() => handleConnect(activeReaderId)}
+                    disabled={isBusy || (!token && !globalConfig.mockMode)}
+                    className="flex items-center gap-1.5 bg-[#22c4a1] text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:brightness-105 disabled:opacity-50 transition-all shadow shadow-[#22c4a1]/20"
+                  >
+                    {isBusy
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <Wifi size={12} />}
+                    {isBusy ? "Conectando..." : "Conectar"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleDisconnect(activeReaderId)}
+                    className="flex items-center gap-1.5 border border-red-200 text-red-500 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all"
+                  >
+                    <WifiOff size={12} /> Desconectar
+                  </button>
+                );
+              })()}
+            </div>
+
+            <div className="flex items-center gap-2">
               <button
                 onClick={handleDownloadCSV}
-                disabled={tags.length === 0}
-                className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-100 disabled:opacity-40 transition-all"
+                disabled={activeTags.length === 0}
+                className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-100 disabled:opacity-40 transition-all"
               >
-                <Download size={14} /> Descargar CSV
+                <Download size={13} /> CSV
               </button>
               <button
                 onClick={handleDownloadTXT}
-                disabled={tags.length === 0}
-                className="flex items-center gap-2 bg-violet-50 border border-violet-200 text-violet-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-violet-100 disabled:opacity-40 transition-all"
+                disabled={activeTags.length === 0}
+                className="flex items-center gap-1.5 bg-violet-50 border border-violet-200 text-violet-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-violet-100 disabled:opacity-40 transition-all"
               >
-                <Download size={14} /> Descargar TXT
+                <Download size={13} /> TXT
               </button>
               <button
                 onClick={handleClearView}
-                className="flex items-center gap-2 bg-white border border-slate-200 text-slate-500 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-all"
+                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-500 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-all"
               >
-                <Trash2 size={14} /> Limpiar
+                <Trash2 size={13} /> Limpiar
               </button>
             </div>
           </div>
 
+          {/* ── TABLA ── */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -357,35 +650,64 @@ export default function RFIDMonitor() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {tags.length === 0 ? (
+                {activeTags.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2 opacity-40">
                         <WifiOff size={40} />
-                        <p className="font-medium">Esperando lecturas del reader...</p>
+                        <p className="font-medium">
+                          {activeState.status === "disconnected"
+                            ? "Reader desconectado — conecta desde Configuración"
+                            : "Esperando lecturas..."}
+                        </p>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  tags.map((tag, idx) => {
-                    const id = tag.tagid;
-                    const isNew = newTagIds.has(id);
+                  activeTags.map((tag, idx) => {
+                    const isNew = activeState.newTagIds.includes(tag.tagid);
                     return (
-                      <tr key={id} className={`group transition-colors ${isNew ? 'bg-emerald-50/30' : 'hover:bg-slate-50/50'}`}>
+                      <tr
+                        key={tag.tagid}
+                        className={`group transition-colors ${
+                          isNew ? "bg-emerald-50/30" : "hover:bg-slate-50/50"
+                        }`}
+                      >
                         <td className="px-8 py-4 text-xs font-mono text-slate-400">{idx + 1}</td>
                         <td className="px-8 py-4">
-                          <span className={`font-mono font-bold text-sm ${isNew ? 'text-emerald-600' : 'text-[#1e4786]'}`}>
-                            {id}
+                          <span
+                            className={`font-mono font-bold text-sm ${
+                              isNew ? "text-emerald-600" : "text-[#1e4786]"
+                            }`}
+                          >
+                            {tag.tagid}
                           </span>
+                          {isNew && (
+                            <span className="ml-2 text-[9px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded-full uppercase">
+                              nuevo
+                            </span>
+                          )}
                         </td>
                         <td className="px-8 py-4 text-center">
-                          <span className="font-mono font-bold text-sm text-slate-600">{tag.contador ?? "—"}</span>
+                          <span className="font-mono font-bold text-sm text-slate-600">
+                            {tag.contador ?? "—"}
+                          </span>
                         </td>
                         <td className="px-8 py-4 text-xs font-mono text-slate-500">
-                          {tag.fecini ? new Date(tag.fecini).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—"}
+                          {tag.fecini
+                            ? new Date(tag.fecini).toLocaleString("es-PE", {
+                                year: "numeric", month: "2-digit", day: "2-digit",
+                                hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+                              })
+                            : "—"}
                         </td>
                         <td className="px-8 py-4 text-xs font-mono text-slate-500">
-                          {tag.fecfin ? new Date(tag.fecfin).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—"}
+                          {tag.fecfin
+                            ? new Date(tag.fecfin).toLocaleString("es-PE", {
+                                year: "numeric", month: "2-digit", day: "2-digit",
+                                hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+                              })
+                            : "—"}
                         </td>
                         <td className="px-8 py-4 text-center">
                           <button className="p-2 text-slate-300 hover:text-red-500 transition-colors">
@@ -402,31 +724,38 @@ export default function RFIDMonitor() {
         </div>
       </main>
 
-      {/* ── MODAL DE CONFIGURACIÓN ── */}
-      <ConfigModal 
+      {/* MODAL DE CONFIGURACIÓN */}
+      <ConfigModal
         isOpen={isConfigOpen}
         onClose={() => setIsConfigOpen(false)}
-        config={config}
-        setConfig={setConfig}
+        globalConfig={globalConfig}
+        setGlobalConfig={setGlobalConfig}
+        readers={readers}
+        readerStates={readerStates}
         onGenerateToken={handleGenerateToken}
-        onConnect={handleConnect}
-        onDisconnect={handleDisconnect}
-        status={status}
+        onAddReader={handleAddReader}
+        onRemoveReader={handleRemoveReader}
+        onUpdateReader={handleUpdateReader}
+        onTestReader={handleTestReader}
         token={token}
       />
 
-      {/* ── MODAL DE LOGS ── */}
+      {/* MODAL DE LOGS */}
       <Modal isOpen={isLogOpen} onClose={() => setIsLogOpen(false)} title="Log de Eventos">
         <div className="bg-[#0f172a] rounded-xl p-4 h-80 overflow-y-auto font-mono text-[11px] space-y-1.5 border border-slate-800 shadow-inner">
-          {logs.length === 0 && <p className="text-slate-600 italic">— Sin eventos —</p>}
+          {logs.length === 0 && (
+            <p className="text-slate-600 italic">— Sin eventos —</p>
+          )}
           {logs.map((log, i) => (
             <div key={i} className="flex gap-2">
               <span className="text-slate-500 shrink-0">[{log.time}]</span>
-              <span className={
-                log.type === "error" ? "text-red-400" : 
-                log.type === "success" ? "text-[#22c4a1]" : 
-                log.type === "info" ? "text-blue-400" : "text-slate-400"
-              }>
+              <span
+                className={
+                  log.type === "error"   ? "text-red-400"    :
+                  log.type === "success" ? "text-[#22c4a1]"  :
+                  log.type === "info"    ? "text-blue-400"   : "text-slate-400"
+                }
+              >
                 {log.msg}
               </span>
             </div>
@@ -435,7 +764,7 @@ export default function RFIDMonitor() {
       </Modal>
 
       <footer className="py-8 text-center text-slate-400 text-[10px] font-mono tracking-[0.2em] uppercase">
-        DBPERU RFID Systems · v1.0
+        DBPERU RFID Systems · v2.0
       </footer>
     </div>
   );

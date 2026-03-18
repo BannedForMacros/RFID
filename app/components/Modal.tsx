@@ -7,9 +7,12 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  size?: "md" | "lg" | "xl";
 }
 
-const Modal = ({ isOpen, onClose, title, children, footer }: ModalProps) => {
+const sizeClass = { md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-3xl" };
+
+const Modal = ({ isOpen, onClose, title, children, footer, size = "md" }: ModalProps) => {
   // Cerrar con la tecla Esc
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -30,7 +33,7 @@ const Modal = ({ isOpen, onClose, title, children, footer }: ModalProps) => {
       />
 
       {/* Contenedor del Modal */}
-      <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 max-h-[calc(100vh-2rem)] flex flex-col">
+      <div className={`relative bg-white w-full ${sizeClass[size]} rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 max-h-[calc(100vh-2rem)] flex flex-col`}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
