@@ -103,6 +103,9 @@ export default function RFIDMonitor() {
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
+  // ── Antena activa para filtrar la tabla ──
+  const [activeAntennaNum, setActiveAntennaNum] = useState<number | null>(null);
+
   // ── Refs para evitar closures stale en el polling ──
   const readersRef = useRef(readers);
   const readerStatesRef = useRef(readerStates);
@@ -114,6 +117,9 @@ export default function RFIDMonitor() {
   useEffect(() => { readerStatesRef.current = readerStates; }, [readerStates]);
   useEffect(() => { globalConfigRef.current = globalConfig; }, [globalConfig]);
   useEffect(() => { tokenRef.current = token; },              [token]);
+
+  // Al cambiar de reader, resetear la antena seleccionada
+  useEffect(() => { setActiveAntennaNum(null); }, [activeReaderId]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -283,13 +289,14 @@ export default function RFIDMonitor() {
       active.map(async (reader) => {
         try {
           let lista: Tag[];
+          const antenasNums = reader.antenas.map((a) => a.numero);
           if (mockMode) {
-            lista = await mockApi.listReadings(reader.ip);
+            lista = await mockApi.listReadings(reader.ip, antenasNums);
           } else {
             const data = await apiFetch(`${baseUrl}/api/Rfid/listaActualizaLecturas`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "X-Auth-Token": t },
-              body: JSON.stringify({ ope: 1, tagid: "", ipreader: reader.ip }),
+              body: JSON.stringify({ ope: 1, tagid: "", ipreader: reader.ip, antenas: antenasNums }),
             });
             lista = Array.isArray(data) ? data : data.lecturas ?? [];
           }
@@ -390,12 +397,13 @@ export default function RFIDMonitor() {
     const fmt = (d: string) =>
       d ? new Date(d).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—";
 
-    const headers = ["#", "EPC / TAG ID", "Contador", "Hora Inicio", "Hora Fin", "IP Reader"];
-    const rows = activeTags.map((tag, idx) =>
-      [idx + 1, tag.tagid, tag.contador, fmt(tag.fecini), fmt(tag.fecfin), tag.ipreader]
+    const headers = ["#", "EPC / TAG ID", "Antena", "Contador", "Hora Inicio", "Hora Fin", "IP Reader"];
+    const rows = activeTags.map((tag, idx) => {
+      const antCfg = activeReader?.antenas.find((a) => a.numero === tag.antena);
+      return [idx + 1, tag.tagid, antCfg?.nombre ?? `Antena ${tag.antena}`, tag.contador, fmt(tag.fecini), fmt(tag.fecfin), tag.ipreader]
         .map((c) => `"${c}"`)
-        .join(",")
-    );
+        .join(",");
+    });
     const blob = new Blob([[headers.join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -415,11 +423,12 @@ export default function RFIDMonitor() {
     const fmt = (d: string) =>
       d ? new Date(d).toLocaleString("es-PE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—";
 
-    const lines = activeTags.map((tag, idx) =>
-      `${idx + 1}\t${tag.tagid}\t${tag.contador}\t${fmt(tag.fecini)}\t${fmt(tag.fecfin)}\t${tag.ipreader}`
-    );
+    const lines = activeTags.map((tag, idx) => {
+      const antCfg = activeReader?.antenas.find((a) => a.numero === tag.antena);
+      return `${idx + 1}\t${tag.tagid}\t${antCfg?.nombre ?? `Antena ${tag.antena}`}\t${tag.contador}\t${fmt(tag.fecini)}\t${fmt(tag.fecfin)}\t${tag.ipreader}`;
+    });
     const blob = new Blob(
-      [["#\tEPC / TAG ID\tContador\tHora Inicio\tHora Fin\tIP Reader", ...lines].join("\n")],
+      [["#\tEPC / TAG ID\tAntena\tContador\tHora Inicio\tHora Fin\tIP Reader", ...lines].join("\n")],
       { type: "text/plain;charset=utf-8;" }
     );
     const link = document.createElement("a");
@@ -543,8 +552,14 @@ export default function RFIDMonitor() {
 
   // ── Datos del tab activo ──────────────────────────────────────────────────
 
-  const activeState = readerStates[activeReaderId] ?? DEFAULT_READER_STATE;
-  const activeTags  = activeState.tags;
+  const activeState      = readerStates[activeReaderId] ?? DEFAULT_READER_STATE;
+  const activeReader     = readers.find((r) => r.id === activeReaderId);
+  const activeAntennaCfg = activeReader?.antenas.find((a) => a.numero === activeAntennaNum);
+
+  // Filtrar tags por antena seleccionada (null = todas)
+  const activeTags = activeAntennaNum !== null
+    ? activeState.tags.filter((t) => t.antena === activeAntennaNum)
+    : activeState.tags;
 
   // Stats globales
   const totalTags   = Object.values(readerStates).reduce((sum, s) => sum + s.tags.length, 0);
@@ -665,89 +680,119 @@ export default function RFIDMonitor() {
           </div>
 
           {/* ── PANEL DE ANTENAS ── */}
-          {(() => {
-            const activeReader = readers.find((r) => r.id === activeReaderId);
-            if (!activeReader || activeReader.antenas.length === 0) return null;
-            return (
-              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/40">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">
+          {activeReader && activeReader.antenas.length > 0 && (
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/40">
+              <div className="flex items-center justify-between mb-2 px-1">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                   Antenas — {activeReader.name}
                 </p>
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {activeReader.antenas.map((ant) => {
-                    const antStatus = activeState.antenasState[ant.numero]?.status ?? "disconnected";
-                    const isConn    = antStatus === "connected" || antStatus === "reading";
-                    const isReading = antStatus === "reading";
-                    const isBusy    = antStatus === "connecting";
-                    return (
-                      <div
-                        key={ant.numero}
-                        className="shrink-0 border border-slate-200 rounded-xl p-3 bg-white min-w-[190px] space-y-2 shadow-sm"
-                      >
-                        {/* Nombre y número */}
-                        <div className="flex items-start gap-2">
+                <p className="text-[9px] text-slate-400 italic">
+                  Haz clic en una antena para filtrar sus lecturas
+                </p>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+
+                {/* Chip "Todas" */}
+                <button
+                  onClick={() => setActiveAntennaNum(null)}
+                  className={`shrink-0 self-start px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+                    activeAntennaNum === null
+                      ? "bg-[#1e4786] text-white border-[#1e4786] shadow"
+                      : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  Todas
+                </button>
+
+                {activeReader.antenas.map((ant) => {
+                  const antStatus   = activeState.antenasState[ant.numero]?.status ?? "disconnected";
+                  const isConn      = antStatus === "connected" || antStatus === "reading";
+                  const isReading   = antStatus === "reading";
+                  const isBusy      = antStatus === "connecting";
+                  const isSelected  = activeAntennaNum === ant.numero;
+                  const tagCount    = activeState.tags.filter((t) => t.antena === ant.numero).length;
+                  return (
+                    <div
+                      key={ant.numero}
+                      onClick={() => setActiveAntennaNum(ant.numero)}
+                      className={`shrink-0 border-2 rounded-xl p-3 bg-white min-w-[200px] space-y-2 cursor-pointer transition-all ${
+                        isSelected
+                          ? "border-[#1e4786] shadow-md shadow-[#1e4786]/10"
+                          : "border-slate-200 hover:border-slate-300 shadow-sm"
+                      }`}
+                    >
+                      {/* Nombre, número y conteo */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
                           <span className={`w-2 h-2 rounded-full shrink-0 mt-1 ${ANT_DOT[antStatus]}`} />
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-slate-700 leading-tight truncate">{ant.nombre}</p>
                             <p className="text-[10px] text-slate-400">Ant. #{ant.numero} · {ant.potencia} dBm</p>
                           </div>
                         </div>
+                        {tagCount > 0 && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                            isSelected ? "bg-[#1e4786] text-white" : "bg-slate-100 text-slate-500"
+                          }`}>
+                            {tagCount}
+                          </span>
+                        )}
+                      </div>
 
-                        {/* Badge estado */}
-                        <div className={`text-[9px] font-bold px-2 py-0.5 rounded-full border text-center ${ANT_COLORS[antStatus]}`}>
-                          {ANT_LABEL[antStatus]}
-                        </div>
+                      {/* Badge estado */}
+                      <div className={`text-[9px] font-bold px-2 py-0.5 rounded-full border text-center ${ANT_COLORS[antStatus]}`}>
+                        {ANT_LABEL[antStatus]}
+                      </div>
 
-                        {/* Botones */}
-                        <div className="flex gap-1.5">
-                          {/* Conectar / Desconectar */}
-                          {!isConn ? (
+                      {/* Botones — stopPropagation para no activar el filtro */}
+                      <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {/* Conectar / Desconectar */}
+                        {!isConn ? (
+                          <button
+                            onClick={() => handleConnectAntenna(activeReaderId, ant.numero)}
+                            disabled={isBusy || (!token && !globalConfig.mockMode)}
+                            className="flex-1 flex items-center justify-center gap-1 bg-[#22c4a1] text-white text-[10px] font-bold py-1.5 rounded-lg hover:brightness-105 disabled:opacity-50 transition-all"
+                          >
+                            {isBusy
+                              ? <Loader2 size={10} className="animate-spin" />
+                              : <Wifi size={10} />}
+                            {isBusy ? "..." : "Conectar"}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleDisconnectAntenna(activeReaderId, ant.numero)}
+                            disabled={isReading}
+                            className="flex-1 flex items-center justify-center gap-1 border border-red-200 text-red-500 text-[10px] font-bold py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-all"
+                          >
+                            <WifiOff size={10} /> Desconectar
+                          </button>
+                        )}
+
+                        {/* Iniciar / Detener */}
+                        {isConn && (
+                          !isReading ? (
                             <button
-                              onClick={() => handleConnectAntenna(activeReaderId, ant.numero)}
-                              disabled={isBusy || (!token && !globalConfig.mockMode)}
-                              className="flex-1 flex items-center justify-center gap-1 bg-[#22c4a1] text-white text-[10px] font-bold py-1.5 rounded-lg hover:brightness-105 disabled:opacity-50 transition-all"
+                              onClick={() => handleStartAntenna(activeReaderId, ant.numero)}
+                              className="flex-1 flex items-center justify-center gap-1 bg-[#1e4786] text-white text-[10px] font-bold py-1.5 rounded-lg hover:brightness-105 transition-all"
                             >
-                              {isBusy
-                                ? <Loader2 size={10} className="animate-spin" />
-                                : <Wifi size={10} />}
-                              {isBusy ? "..." : "Conectar"}
+                              <Play size={10} fill="white" /> Iniciar
                             </button>
                           ) : (
                             <button
-                              onClick={() => handleDisconnectAntenna(activeReaderId, ant.numero)}
-                              disabled={isReading}
-                              className="flex-1 flex items-center justify-center gap-1 border border-red-200 text-red-500 text-[10px] font-bold py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-all"
+                              onClick={() => handleStopAntenna(activeReaderId, ant.numero)}
+                              className="flex-1 flex items-center justify-center gap-1 bg-red-500 text-white text-[10px] font-bold py-1.5 rounded-lg hover:brightness-105 transition-all"
                             >
-                              <WifiOff size={10} /> Desconectar
+                              <Square size={10} fill="white" /> Detener
                             </button>
-                          )}
-
-                          {/* Iniciar / Detener */}
-                          {isConn && (
-                            !isReading ? (
-                              <button
-                                onClick={() => handleStartAntenna(activeReaderId, ant.numero)}
-                                className="flex-1 flex items-center justify-center gap-1 bg-[#1e4786] text-white text-[10px] font-bold py-1.5 rounded-lg hover:brightness-105 transition-all"
-                              >
-                                <Play size={10} fill="white" /> Iniciar
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleStopAntenna(activeReaderId, ant.numero)}
-                                className="flex-1 flex items-center justify-center gap-1 bg-red-500 text-white text-[10px] font-bold py-1.5 rounded-lg hover:brightness-105 transition-all"
-                              >
-                                <Square size={10} fill="white" /> Detener
-                              </button>
-                            )
-                          )}
-                        </div>
+                          )
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })()}
+            </div>
+          )}
 
           {/* ── HEADER DE TABLA ── */}
           <div className="px-8 py-4 bg-slate-50/50 flex justify-between items-center flex-wrap gap-2">
@@ -755,8 +800,16 @@ export default function RFIDMonitor() {
               <h2 className="font-bold text-slate-700 flex items-center gap-2">
                 🏷 Lecturas —{" "}
                 <span className="text-[#1e4786]">
-                  {readers.find((r) => r.id === activeReaderId)?.name ?? "—"}
+                  {activeReader?.name ?? "—"}
                 </span>
+                {activeAntennaCfg ? (
+                  <>
+                    <span className="text-slate-300">/</span>
+                    <span className="text-[#22c4a1]">{activeAntennaCfg.nombre}</span>
+                  </>
+                ) : (
+                  <span className="text-slate-400 text-xs font-normal">· todas las antenas</span>
+                )}
               </h2>
               <div
                 className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${
@@ -800,6 +853,7 @@ export default function RFIDMonitor() {
                 <tr className="text-[11px] uppercase tracking-widest text-slate-400 font-bold">
                   <th className="px-8 py-4">#</th>
                   <th className="px-8 py-4">EPC / TAG ID</th>
+                  <th className="px-6 py-4 text-center">Antena</th>
                   <th className="px-8 py-4 text-center">Contador</th>
                   <th className="px-8 py-4">Hora Inicio</th>
                   <th className="px-8 py-4">Hora Fin</th>
@@ -809,13 +863,15 @@ export default function RFIDMonitor() {
               <tbody className="divide-y divide-slate-50">
                 {activeTags.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-20 text-center text-slate-400">
+                    <td colSpan={7} className="py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2 opacity-40">
                         <WifiOff size={40} />
                         <p className="font-medium">
                           {activeState.status === "disconnected"
-                            ? "Reader desconectado — conecta desde Configuración"
-                            : "Esperando lecturas..."}
+                            ? "Reader desconectado — conecta una antena desde arriba"
+                            : activeAntennaNum !== null
+                              ? `Sin lecturas en ${activeAntennaCfg?.nombre ?? `Antena ${activeAntennaNum}`}`
+                              : "Esperando lecturas..."}
                         </p>
                       </div>
                     </td>
@@ -844,6 +900,19 @@ export default function RFIDMonitor() {
                               nuevo
                             </span>
                           )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {(() => {
+                            const antCfg = activeReader?.antenas.find((a) => a.numero === tag.antena);
+                            return (
+                              <span className="inline-flex flex-col items-center">
+                                <span className="font-mono font-bold text-xs text-[#1e4786]">
+                                  {antCfg?.nombre ?? `Ant. ${tag.antena}`}
+                                </span>
+                                <span className="text-[9px] text-slate-400">#{tag.antena}</span>
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-8 py-4 text-center">
                           <span className="font-mono font-bold text-sm text-slate-600">

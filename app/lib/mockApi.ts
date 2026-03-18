@@ -55,22 +55,24 @@ export const mockApi = {
     return { ok, latencyMs: ok ? latencyMs : 0 };
   },
 
-  /** Devuelve lista de tags (con posibles nuevos en cada llamada) */
-  async listReadings(ip: string): Promise<Tag[]> {
+  /** Devuelve lista de tags por antenas activas (con posibles nuevos en cada llamada) */
+  async listReadings(ip: string, antenasNums: number[] = [1]): Promise<Tag[]> {
     await delay(80 + Math.random() * 60);
     const store = getStore(ip);
     const now = new Date().toISOString();
 
-    // Agregar nuevos tags aleatoriamente
+    // Agregar nuevos tags aleatoriamente, asignando antena al azar entre las activas
     const addChance = store.tags.length < 5 ? 0.65 : 0.2;
     const toAdd = Math.random() < addChance ? Math.ceil(Math.random() * 2) : 0;
     for (let i = 0; i < toAdd; i++) {
+      const antena = antenasNums[Math.floor(Math.random() * antenasNums.length)];
       store.tags.push({
         tagid: generateEPC(ip),
         contador: 1,
         fecini: now,
         fecfin: now,
         ipreader: ip,
+        antena,
       });
     }
 

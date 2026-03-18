@@ -4,6 +4,7 @@ export interface Tag {
   fecini: string;
   fecfin: string;
   ipreader: string;
+  antena: number;
 }
 
 export type ReaderStatus =
