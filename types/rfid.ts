@@ -33,12 +33,19 @@ export interface ReaderConfig {
   antenas: AntennaConfig[];
 }
 
+export type AntennaStatus = "disconnected" | "connecting" | "connected" | "reading";
+
+export interface AntennaRuntimeState {
+  status: AntennaStatus;
+}
+
 export interface ReaderRuntimeState {
   status: ReaderStatus;
   tags: Tag[];
   newTagIds: string[];
   scanCount: number;
   lastUpdate: string | null;
+  antenasState: Record<number, AntennaRuntimeState>;
 }
 
 export interface GlobalConfig {

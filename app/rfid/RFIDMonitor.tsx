@@ -17,6 +17,7 @@ import type {
   LogEntry,
   ReaderConfig,
   ReaderRuntimeState,
+  AntennaStatus,
   GlobalConfig,
 } from "../../types/rfid";
 
@@ -28,6 +29,28 @@ const DEFAULT_READER_STATE: ReaderRuntimeState = {
   newTagIds: [],
   scanCount: 0,
   lastUpdate: null,
+  antenasState: {},
+};
+
+const ANT_DOT: Record<AntennaStatus, string> = {
+  disconnected: "bg-slate-300",
+  connecting:   "bg-yellow-400 animate-pulse",
+  connected:    "bg-blue-500",
+  reading:      "bg-emerald-500 animate-pulse",
+};
+
+const ANT_COLORS: Record<AntennaStatus, string> = {
+  disconnected: "bg-slate-100 text-slate-500 border-slate-200",
+  connecting:   "bg-yellow-50 text-yellow-600 border-yellow-200",
+  connected:    "bg-blue-50 text-blue-600 border-blue-200",
+  reading:      "bg-emerald-50 text-emerald-600 border-emerald-200",
+};
+
+const ANT_LABEL: Record<AntennaStatus, string> = {
+  disconnected: "DESCONECTADA",
+  connecting:   "CONECTANDO...",
+  connected:    "CONECTADA",
+  reading:      "LEYENDO",
 };
 
 const STATUS_DOT: Record<ReaderStatus, string> = {
@@ -444,6 +467,80 @@ export default function RFIDMonitor() {
     setReaders((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
   };
 
+  // ── 10. Control por antena ────────────────────────────────────────────────
+
+  const setAntennaStatus = (readerId: string, antNum: number, status: AntennaStatus) => {
+    setReaderStates((prev) => {
+      const cur = prev[readerId] ?? DEFAULT_READER_STATE;
+      const newAnt = { ...cur.antenasState, [antNum]: { status } };
+      // Derivar estado del reader desde las antenas
+      const antVals = Object.values(newAnt);
+      let readerStatus: ReaderRuntimeState["status"] = cur.status;
+      if (antVals.some((a) => a.status === "reading"))        readerStatus = "reading";
+      else if (antVals.some((a) => a.status === "connected" || a.status === "connecting")) readerStatus = "connected";
+      else if (antVals.every((a) => a.status === "disconnected")) readerStatus = "disconnected";
+      return { ...prev, [readerId]: { ...cur, antenasState: newAnt, status: readerStatus } };
+    });
+  };
+
+  const handleConnectAntenna = async (readerId: string, antNum: number) => {
+    const reader = readersRef.current.find((r) => r.id === readerId);
+    const ant = reader?.antenas.find((a) => a.numero === antNum);
+    if (!reader || !ant) return;
+    setAntennaStatus(readerId, antNum, "connecting");
+    addLog(`Conectando Antena ${antNum} — ${ant.nombre}...`, "info");
+    try {
+      if (globalConfigRef.current.mockMode) {
+        await mockApi.connect(reader.ip);
+      } else {
+        await apiFetch(`${globalConfigRef.current.baseUrl}/api/Rfid/connect`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Auth-Token": tokenRef.current },
+          body: JSON.stringify({ ipreader: reader.ip, antena: antNum, potenciaDbm: ant.potencia }),
+        });
+      }
+      setAntennaStatus(readerId, antNum, "connected");
+      addLog(`✓ Antena ${antNum} — ${ant.nombre} conectada`, "success");
+    } catch (e: unknown) {
+      setAntennaStatus(readerId, antNum, "disconnected");
+      addLog(`✗ Error antena ${antNum}: ${(e as Error).message}`, "error");
+    }
+  };
+
+  const handleDisconnectAntenna = async (readerId: string, antNum: number) => {
+    const reader = readersRef.current.find((r) => r.id === readerId);
+    const ant = reader?.antenas.find((a) => a.numero === antNum);
+    if (!reader || !ant) return;
+    try {
+      if (!globalConfigRef.current.mockMode) {
+        await apiFetch(`${globalConfigRef.current.baseUrl}/api/Rfid/disconnect`, {
+          method: "POST",
+          headers: { "X-Auth-Token": tokenRef.current },
+          body: JSON.stringify({ ipreader: reader.ip, antena: antNum }),
+        });
+      }
+    } catch { /* ignorar */ }
+    setAntennaStatus(readerId, antNum, "disconnected");
+    addLog(`Antena ${antNum} — ${ant.nombre} desconectada`, "info");
+  };
+
+  const handleStartAntenna = (readerId: string, antNum: number) => {
+    const reader = readersRef.current.find((r) => r.id === readerId);
+    const ant = reader?.antenas.find((a) => a.numero === antNum);
+    if (!ant) return;
+    setAntennaStatus(readerId, antNum, "reading");
+    if (!polling) setPolling(true);
+    addLog(`▶ Antena ${antNum} — ${ant.nombre} iniciando lectura`, "success");
+  };
+
+  const handleStopAntenna = (readerId: string, antNum: number) => {
+    const reader = readersRef.current.find((r) => r.id === readerId);
+    const ant = reader?.antenas.find((a) => a.numero === antNum);
+    if (!ant) return;
+    setAntennaStatus(readerId, antNum, "connected");
+    addLog(`⏸ Antena ${antNum} — ${ant.nombre} detenida`, "info");
+  };
+
   // ── Datos del tab activo ──────────────────────────────────────────────────
 
   const activeState = readerStates[activeReaderId] ?? DEFAULT_READER_STATE;
@@ -567,6 +664,91 @@ export default function RFIDMonitor() {
             )}
           </div>
 
+          {/* ── PANEL DE ANTENAS ── */}
+          {(() => {
+            const activeReader = readers.find((r) => r.id === activeReaderId);
+            if (!activeReader || activeReader.antenas.length === 0) return null;
+            return (
+              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/40">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">
+                  Antenas — {activeReader.name}
+                </p>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {activeReader.antenas.map((ant) => {
+                    const antStatus = activeState.antenasState[ant.numero]?.status ?? "disconnected";
+                    const isConn    = antStatus === "connected" || antStatus === "reading";
+                    const isReading = antStatus === "reading";
+                    const isBusy    = antStatus === "connecting";
+                    return (
+                      <div
+                        key={ant.numero}
+                        className="shrink-0 border border-slate-200 rounded-xl p-3 bg-white min-w-[190px] space-y-2 shadow-sm"
+                      >
+                        {/* Nombre y número */}
+                        <div className="flex items-start gap-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 mt-1 ${ANT_DOT[antStatus]}`} />
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-700 leading-tight truncate">{ant.nombre}</p>
+                            <p className="text-[10px] text-slate-400">Ant. #{ant.numero} · {ant.potencia} dBm</p>
+                          </div>
+                        </div>
+
+                        {/* Badge estado */}
+                        <div className={`text-[9px] font-bold px-2 py-0.5 rounded-full border text-center ${ANT_COLORS[antStatus]}`}>
+                          {ANT_LABEL[antStatus]}
+                        </div>
+
+                        {/* Botones */}
+                        <div className="flex gap-1.5">
+                          {/* Conectar / Desconectar */}
+                          {!isConn ? (
+                            <button
+                              onClick={() => handleConnectAntenna(activeReaderId, ant.numero)}
+                              disabled={isBusy || (!token && !globalConfig.mockMode)}
+                              className="flex-1 flex items-center justify-center gap-1 bg-[#22c4a1] text-white text-[10px] font-bold py-1.5 rounded-lg hover:brightness-105 disabled:opacity-50 transition-all"
+                            >
+                              {isBusy
+                                ? <Loader2 size={10} className="animate-spin" />
+                                : <Wifi size={10} />}
+                              {isBusy ? "..." : "Conectar"}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleDisconnectAntenna(activeReaderId, ant.numero)}
+                              disabled={isReading}
+                              className="flex-1 flex items-center justify-center gap-1 border border-red-200 text-red-500 text-[10px] font-bold py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-all"
+                            >
+                              <WifiOff size={10} /> Desconectar
+                            </button>
+                          )}
+
+                          {/* Iniciar / Detener */}
+                          {isConn && (
+                            !isReading ? (
+                              <button
+                                onClick={() => handleStartAntenna(activeReaderId, ant.numero)}
+                                className="flex-1 flex items-center justify-center gap-1 bg-[#1e4786] text-white text-[10px] font-bold py-1.5 rounded-lg hover:brightness-105 transition-all"
+                              >
+                                <Play size={10} fill="white" /> Iniciar
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleStopAntenna(activeReaderId, ant.numero)}
+                                className="flex-1 flex items-center justify-center gap-1 bg-red-500 text-white text-[10px] font-bold py-1.5 rounded-lg hover:brightness-105 transition-all"
+                              >
+                                <Square size={10} fill="white" /> Detener
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ── HEADER DE TABLA ── */}
           <div className="px-8 py-4 bg-slate-50/50 flex justify-between items-center flex-wrap gap-2">
             <div className="flex items-center gap-2 flex-wrap">
@@ -585,31 +767,6 @@ export default function RFIDMonitor() {
               >
                 {activeState.status.toUpperCase()}
               </div>
-
-              {/* Conectar / Desconectar del reader activo */}
-              {(() => {
-                const isConn = activeState.status === "connected" || activeState.status === "reading";
-                const isBusy = activeState.status === "connecting" || activeState.status === "testing";
-                return !isConn ? (
-                  <button
-                    onClick={() => handleConnect(activeReaderId)}
-                    disabled={isBusy || (!token && !globalConfig.mockMode)}
-                    className="flex items-center gap-1.5 bg-[#22c4a1] text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:brightness-105 disabled:opacity-50 transition-all shadow shadow-[#22c4a1]/20"
-                  >
-                    {isBusy
-                      ? <Loader2 size={12} className="animate-spin" />
-                      : <Wifi size={12} />}
-                    {isBusy ? "Conectando..." : "Conectar"}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleDisconnect(activeReaderId)}
-                    className="flex items-center gap-1.5 border border-red-200 text-red-500 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all"
-                  >
-                    <WifiOff size={12} /> Desconectar
-                  </button>
-                );
-              })()}
             </div>
 
             <div className="flex items-center gap-2">
