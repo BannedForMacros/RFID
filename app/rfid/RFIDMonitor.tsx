@@ -82,7 +82,7 @@ export default function RFIDMonitor() {
     {
       id: "r_default",
       name: "Reader 1",
-      ip: "192.168.1.100",
+      ip: "192.168.10.1",
       antenas: [
         { numero: 1, nombre: "Antena 1", potencia: 20 },
         { numero: 2, nombre: "Antena 2", potencia: 20 },
@@ -450,7 +450,7 @@ export default function RFIDMonitor() {
       {
         id,
         name: `Reader ${num}`,
-        ip: "192.168.1.100",
+        ip: "192.168.10.1",
         antenas: [{ numero: 1, nombre: "Antena 1", potencia: 20 }],
       },
     ]);

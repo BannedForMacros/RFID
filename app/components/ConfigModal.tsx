@@ -278,7 +278,7 @@ export const ConfigModal = ({
                     className="w-full p-1.5 border border-slate-200 rounded-lg text-xs font-mono bg-white focus:border-[#22c4a1] outline-none"
                     value={reader.ip}
                     onChange={(e) => onUpdateReader(reader.id, { ip: e.target.value })}
-                    placeholder="192.168.1.100"
+                    placeholder="192.168.10.1"
                   />
                 </div>
 
