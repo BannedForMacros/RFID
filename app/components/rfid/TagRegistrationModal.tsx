@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Save, Loader2 } from "lucide-react";
 import Modal from "../Modal";
 import { tagService } from "../../services/tagService";
@@ -29,19 +29,17 @@ export function TagRegistrationModal({
   const [saving, setSaving] = useState(false);
 
   // Reset form when modal opens with new tagId
-  const handleOpen = () => {
-    setForm({
-      idTag: prefilledTagId,
-      codProducto: "",
-      codBarra: "",
-      codManual: "",
-      descripcion: "",
-    });
-  };
-
-  if (isOpen && form.idTag !== prefilledTagId && prefilledTagId) {
-    handleOpen();
-  }
+  useEffect(() => {
+    if (isOpen && prefilledTagId) {
+      setForm({
+        idTag: prefilledTagId,
+        codProducto: "",
+        codBarra: "",
+        codManual: "",
+        descripcion: "",
+      });
+    }
+  }, [isOpen, prefilledTagId]);
 
   const handleSave = async () => {
     if (!form.idTag.trim()) {

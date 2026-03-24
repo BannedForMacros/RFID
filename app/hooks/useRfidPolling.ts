@@ -129,10 +129,9 @@ export function useRfidPolling({
         addLog("Conecta al menos un reader antes de iniciar lectura", "error");
         return;
       }
-      setPolling((p) => {
-        addLog(!p ? "Lectura en tiempo real iniciada" : "Lectura pausada", !p ? "success" : "info");
-        return !p;
-      });
+      const next = !pollingRef.current;
+      addLog(next ? "Lectura en tiempo real iniciada" : "Lectura pausada", next ? "success" : "info");
+      setPolling(next);
     },
     [addLog]
   );

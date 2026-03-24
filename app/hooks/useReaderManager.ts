@@ -122,14 +122,16 @@ export function useReaderManager() {
         return;
       }
       updateReaderState(readerId, () => ({ status: "connecting" }));
-      addLog(`Conectando ${reader.name} (${reader.ip}) con ${reader.antenas.length} antena(s)...`, "info");
+      addLog(`Conectando ${reader.name} (${reader.ip})...`, "info");
       try {
         const cfg = globalConfigRef.current;
+        // Usar la mayor potencia configurada entre las antenas del reader
+        const maxPotencia = Math.max(...reader.antenas.map((a) => a.potencia));
         await rfidService.connect(
           cfg.baseUrl,
           tokenRef.current,
           reader.ip,
-          reader.antenas.map((a) => ({ numero: a.numero, potenciaDbm: a.potencia })),
+          maxPotencia,
           cfg.mockMode
         );
         updateReaderState(readerId, () => ({ status: "connected" }));

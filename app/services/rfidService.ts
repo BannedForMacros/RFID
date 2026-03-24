@@ -31,7 +31,7 @@ export const rfidService = {
     baseUrl: string,
     token: string,
     ip: string,
-    antenas: { numero: number; potenciaDbm: number }[],
+    potenciaDbm: number,
     mockMode: boolean
   ): Promise<void> {
     if (mockMode) {
@@ -41,7 +41,11 @@ export const rfidService = {
     await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.connect), {
       method: "POST",
       headers: getHeaders(token),
-      body: JSON.stringify({ ipreader: ip, antenas }),
+      body: JSON.stringify({
+        ipreader: ip,
+        potenciaDbm,
+        tlectura: 0,
+      }),
     });
   },
 
@@ -53,40 +57,6 @@ export const rfidService = {
     await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.disconnect), {
       method: "POST",
       headers: getHeaders(token),
-    });
-  },
-
-  async connectAntenna(
-    baseUrl: string,
-    token: string,
-    ip: string,
-    antNum: number,
-    potencia: number,
-    mockMode: boolean
-  ): Promise<void> {
-    if (mockMode) {
-      await mockApi.connect(ip);
-      return;
-    }
-    await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.connect), {
-      method: "POST",
-      headers: getHeaders(token),
-      body: JSON.stringify({ ipreader: ip, antena: antNum, potenciaDbm: potencia }),
-    });
-  },
-
-  async disconnectAntenna(
-    baseUrl: string,
-    token: string,
-    ip: string,
-    antNum: number,
-    mockMode: boolean
-  ): Promise<void> {
-    if (mockMode) return;
-    await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.disconnect), {
-      method: "POST",
-      headers: getHeaders(token),
-      body: JSON.stringify({ ipreader: ip, antena: antNum }),
     });
   },
 
