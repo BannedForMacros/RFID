@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Activity, RefreshCw, Zap } from "lucide-react";
 
 import { StatCard } from "../components/StatCard";
@@ -16,6 +16,8 @@ import { TagRegistrationModal } from "../components/rfid/TagRegistrationModal";
 import { useApp } from "../context/AppContext";
 import { useDownload } from "../hooks/useDownload";
 import { rfidService } from "../services/rfidService";
+import { tagService } from "../services/tagService";
+import type { TagRegistro } from "../../types/rfid";
 
 export default function RFIDMonitor() {
   const {
@@ -30,6 +32,24 @@ export default function RFIDMonitor() {
   } = useApp();
 
   const { downloadCSV, downloadTXT } = useDownload(addLog);
+
+  // ── Registered tags (for comparing live reads) ──
+  const [registeredTags, setRegisteredTags] = useState<Map<string, TagRegistro>>(new Map());
+  const registeredFetched = useRef(false);
+
+  useEffect(() => {
+    if (registeredFetched.current) return;
+    if (!token && !globalConfig.mockMode) return;
+    if (globalConfig.mockMode) return;
+    registeredFetched.current = true;
+    tagService.list(globalConfig.baseUrl, token).then((res) => {
+      if (res.codigo === 1 && res.registros) {
+        const map = new Map<string, TagRegistro>();
+        res.registros.forEach((t) => map.set(t.idTag, t));
+        setRegisteredTags(map);
+      }
+    }).catch(() => { /* silent */ });
+  }, [token, globalConfig.baseUrl, globalConfig.mockMode]);
 
   // ── Modals ──
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -157,6 +177,7 @@ export default function RFIDMonitor() {
             onDownloadTXT={() => downloadTXT(activeTags, activeReader)}
             onClear={handleClearView}
             onRegisterTag={handleRegisterTag}
+            registeredTags={registeredTags}
           />
         </div>
       </main>

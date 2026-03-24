@@ -145,8 +145,8 @@ export default function TagsPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
 
   const estadoLabel = (estado: string) => {
-    if (estado === "A") return { text: "ACTIVO", cls: "bg-emerald-50 text-emerald-600 border-emerald-200" };
-    if (estado === "I") return { text: "INACTIVO", cls: "bg-red-50 text-red-500 border-red-200" };
+    if (estado === "A" || estado === "1") return { text: "ACTIVO", cls: "bg-emerald-50 text-emerald-600 border-emerald-200" };
+    if (estado === "I" || estado === "0") return { text: "INACTIVO", cls: "bg-red-50 text-red-500 border-red-200" };
     return { text: estado.toUpperCase(), cls: "bg-slate-100 text-slate-500 border-slate-200" };
   };
 
@@ -311,11 +311,11 @@ export default function TagsPage() {
               <div className="flex items-center gap-3 text-[11px] text-slate-400">
                 <span className="flex items-center gap-1">
                   <CheckCircle size={11} className="text-emerald-500" />
-                  {tags.filter((t) => t.estado === "A").length} activos
+                  {tags.filter((t) => t.estado === "A" || t.estado === "1").length} activos
                 </span>
                 <span className="flex items-center gap-1">
                   <AlertCircle size={11} className="text-red-400" />
-                  {tags.filter((t) => t.estado !== "A").length} inactivos
+                  {tags.filter((t) => t.estado !== "A" && t.estado !== "1").length} inactivos
                 </span>
               </div>
             </div>
