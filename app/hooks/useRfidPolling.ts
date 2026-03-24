@@ -94,7 +94,6 @@ export function useRfidPolling({
     async function loop() {
       while (!cancelled && pollingRef.current) {
         await pollAllReaders();
-        // Micro-pause to let React render and avoid locking the thread
         await new Promise((r) => setTimeout(r, 50));
       }
     }
@@ -102,7 +101,6 @@ export function useRfidPolling({
     if (polling) {
       loop();
     } else {
-      // Readers que estaban leyendo pasan a "connected"
       setReaderStates((prev) => {
         const next = { ...prev };
         let changed = false;
@@ -119,7 +117,8 @@ export function useRfidPolling({
     return () => { cancelled = true; };
   }, [polling, pollAllReaders, setReaderStates]);
 
-  const togglePolling = useCallback(
+  // ── Start reading ──
+  const startPolling = useCallback(
     (readers: ReaderConfig[], readerStates: Record<string, ReaderRuntimeState>) => {
       const anyConnected = readers.some((r) => {
         const s = readerStates[r.id]?.status;
@@ -129,12 +128,53 @@ export function useRfidPolling({
         addLog("Conecta al menos un reader antes de iniciar lectura", "error");
         return;
       }
-      const next = !pollingRef.current;
-      addLog(next ? "Lectura en tiempo real iniciada" : "Lectura pausada", next ? "success" : "info");
-      setPolling(next);
+      addLog("Lectura en tiempo real iniciada", "success");
+      setPolling(true);
     },
     [addLog]
   );
 
-  return { polling, setPolling, togglePolling };
+  // ── Stop reading + disconnect all active readers ──
+  const stopPolling = useCallback(
+    async () => {
+      setPolling(false);
+      addLog("Lectura detenida", "info");
+
+      const currentReaders = readersRef.current;
+      const states = readerStatesRef.current;
+      const { baseUrl, mockMode } = globalConfigRef.current;
+      const t = tokenRef.current;
+
+      // Disconnect all connected/reading readers via API
+      const activeReaders = currentReaders.filter((r) => {
+        const s = states[r.id]?.status;
+        return s === "connected" || s === "reading";
+      });
+
+      await Promise.all(
+        activeReaders.map(async (reader) => {
+          try {
+            await rfidService.disconnect(baseUrl, t, reader.ip, mockMode);
+            addLog(`${reader.name} desconectado`, "info");
+          } catch {
+            // ignorar errores al desconectar
+          }
+        })
+      );
+
+      // Update all reader states to disconnected
+      setReaderStates((prev) => {
+        const next = { ...prev };
+        activeReaders.forEach((r) => {
+          if (next[r.id]) {
+            next[r.id] = { ...next[r.id], status: "disconnected" };
+          }
+        });
+        return next;
+      });
+    },
+    [addLog, readersRef, readerStatesRef, globalConfigRef, tokenRef, setReaderStates]
+  );
+
+  return { polling, setPolling, startPolling, stopPolling };
 }

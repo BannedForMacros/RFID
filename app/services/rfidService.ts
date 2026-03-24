@@ -14,7 +14,14 @@ async function apiFetch(url: string, options: RequestInit = {}) {
     const text = await res.text();
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
-  return res.json();
+  // Handle 204 No Content or empty body
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
 }
 
 export const rfidService = {
@@ -57,6 +64,7 @@ export const rfidService = {
     await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.disconnect), {
       method: "POST",
       headers: getHeaders(token),
+      body: JSON.stringify({ ipreader: ip }),
     });
   },
 

@@ -45,7 +45,7 @@ export default function RFIDMonitor() {
     handleTestReader,
   } = manager;
 
-  const { polling, setPolling, togglePolling } = useRfidPolling({
+  const { polling, startPolling, stopPolling } = useRfidPolling({
     readersRef,
     readerStatesRef,
     globalConfigRef,
@@ -163,7 +163,9 @@ export default function RFIDMonitor() {
         {/* Controls */}
         <ControlBar
           polling={polling}
-          onTogglePolling={() => togglePolling(readers, readerStates)}
+          onTogglePolling={() =>
+            polling ? stopPolling() : startPolling(readers, readerStates)
+          }
           onClear={handleClearView}
         />
 
