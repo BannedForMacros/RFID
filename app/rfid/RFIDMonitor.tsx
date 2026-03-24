@@ -14,45 +14,20 @@ import { LogModal } from "../components/rfid/LogModal";
 import { TagRegistrationModal } from "../components/rfid/TagRegistrationModal";
 
 import { useApp } from "../context/AppContext";
-import { useReaderManager } from "../hooks/useReaderManager";
-import { useRfidPolling } from "../hooks/useRfidPolling";
 import { useDownload } from "../hooks/useDownload";
 import { rfidService } from "../services/rfidService";
 
 export default function RFIDMonitor() {
-  const { globalConfig, setGlobalConfig, token, setToken, logs, addLog } = useApp();
-
-  const manager = useReaderManager();
   const {
-    readers,
-    readerStates,
-    activeReaderId,
-    setActiveReaderId,
-    activeAntennaNum,
-    setActiveAntennaNum,
-    activeState,
-    activeReader,
-    readersRef,
-    readerStatesRef,
-    globalConfigRef,
-    tokenRef,
-    setReaderStates,
-    handleAddReader,
-    handleRemoveReader,
-    handleUpdateReader,
-    handleConnect,
-    handleDisconnect,
-    handleTestReader,
-  } = manager;
-
-  const { polling, startPolling, stopPolling } = useRfidPolling({
-    readersRef,
-    readerStatesRef,
-    globalConfigRef,
-    tokenRef,
-    setReaderStates,
-    addLog,
-  });
+    globalConfig, setGlobalConfig, token, setToken, logs, addLog,
+    readers, readerStates, activeReaderId, setActiveReaderId,
+    activeAntennaNum, setActiveAntennaNum, activeState, activeReader,
+    readersRef, readerStatesRef, globalConfigRef, tokenRef,
+    updateReaderState,
+    handleAddReader, handleRemoveReader, handleUpdateReader,
+    handleConnect, handleDisconnect, handleTestReader, handleGenerateToken,
+    polling, startPolling, stopPolling,
+  } = useApp();
 
   const { downloadCSV, downloadTXT } = useDownload(addLog);
 
@@ -61,25 +36,6 @@ export default function RFIDMonitor() {
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [registerTagId, setRegisterTagId] = useState("");
-
-  // ── Token generation ──
-  const handleGenerateToken = async () => {
-    try {
-      addLog("Generando token...", "info");
-      const t = await rfidService.generateToken(
-        globalConfig.baseUrl,
-        globalConfig.dias,
-        globalConfig.mockMode
-      );
-      setToken(t);
-      addLog(
-        `Token generado (${globalConfig.dias} día${globalConfig.dias !== 1 ? "s" : ""})`,
-        "success"
-      );
-    } catch (e: unknown) {
-      addLog(`Error token: ${(e as Error).message}`, "error");
-    }
-  };
 
   // ── Clear view ──
   const handleClearView = useCallback(async () => {
@@ -95,13 +51,13 @@ export default function RFIDMonitor() {
     } catch {
       // ignorar
     }
-    manager.updateReaderState(activeReaderId, () => ({
+    updateReaderState(activeReaderId, () => ({
       tags: [],
       newTagIds: [],
       scanCount: 0,
     }));
     addLog(`Lista de ${reader.name} limpiada`, "info");
-  }, [activeReaderId, addLog, manager, readersRef, globalConfigRef, tokenRef]);
+  }, [activeReaderId, addLog, updateReaderState, readersRef, globalConfigRef, tokenRef]);
 
   // ── Register tag from live reading ──
   const handleRegisterTag = (tagId: string) => {
@@ -164,7 +120,7 @@ export default function RFIDMonitor() {
         <ControlBar
           polling={polling}
           onTogglePolling={() =>
-            polling ? stopPolling() : startPolling(readers, readerStates)
+            polling ? stopPolling() : startPolling()
           }
           onClear={handleClearView}
         />

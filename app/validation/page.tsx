@@ -19,14 +19,15 @@ import { Navbar } from "../components/rfid/Navbar";
 import { LogModal } from "../components/rfid/LogModal";
 import { ConfigModal } from "../components/ConfigModal";
 import { useApp } from "../context/AppContext";
-import { useReaderManager } from "../hooks/useReaderManager";
 import { validationService } from "../services/validationService";
-import { rfidService } from "../services/rfidService";
 import type { ValidacionLectura } from "../../types/rfid";
 
 export default function ValidationPage() {
-  const { globalConfig, setGlobalConfig, token, setToken, logs, addLog } = useApp();
-  const manager = useReaderManager();
+  const {
+    globalConfig, setGlobalConfig, token, setToken, logs, addLog,
+    readers, readerStates,
+    handleAddReader, handleRemoveReader, handleUpdateReader, handleTestReader, handleGenerateToken,
+  } = useApp();
 
   // Config
   const [readerIp, setReaderIp] = useState("192.168.10.1");
@@ -41,22 +42,6 @@ export default function ValidationPage() {
   // Modals
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
-
-  // Token generation
-  const handleGenerateToken = async () => {
-    try {
-      addLog("Generando token...", "info");
-      const t = await rfidService.generateToken(
-        globalConfig.baseUrl,
-        globalConfig.dias,
-        globalConfig.mockMode
-      );
-      setToken(t);
-      addLog(`Token generado`, "success");
-    } catch (e: unknown) {
-      addLog(`Error token: ${(e as Error).message}`, "error");
-    }
-  };
 
   // ── Validate ──
   const handleValidate = async () => {
@@ -121,7 +106,7 @@ export default function ValidationPage() {
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a]">
       <Navbar
-        readersCount={manager.readers.length}
+        readersCount={readers.length}
         mockMode={globalConfig.mockMode}
         logsCount={logs.length}
         onOpenLogs={() => setIsLogOpen(true)}
@@ -365,13 +350,13 @@ export default function ValidationPage() {
         onClose={() => setIsConfigOpen(false)}
         globalConfig={globalConfig}
         setGlobalConfig={setGlobalConfig}
-        readers={manager.readers}
-        readerStates={manager.readerStates}
+        readers={readers}
+        readerStates={readerStates}
         onGenerateToken={handleGenerateToken}
-        onAddReader={manager.handleAddReader}
-        onRemoveReader={manager.handleRemoveReader}
-        onUpdateReader={manager.handleUpdateReader}
-        onTestReader={manager.handleTestReader}
+        onAddReader={handleAddReader}
+        onRemoveReader={handleRemoveReader}
+        onUpdateReader={handleUpdateReader}
+        onTestReader={handleTestReader}
         token={token}
       />
 

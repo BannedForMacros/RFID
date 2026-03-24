@@ -20,9 +20,7 @@ import { LogModal } from "../components/rfid/LogModal";
 import { ConfigModal } from "../components/ConfigModal";
 import Modal from "../components/Modal";
 import { useApp } from "../context/AppContext";
-import { useReaderManager } from "../hooks/useReaderManager";
 import { tagService } from "../services/tagService";
-import { rfidService } from "../services/rfidService";
 import type { TagRegistro } from "../../types/rfid";
 
 type ModalMode = "create" | "edit" | null;
@@ -37,8 +35,11 @@ const EMPTY_FORM: TagRegistro = {
 };
 
 export default function TagsPage() {
-  const { globalConfig, setGlobalConfig, token, setToken, logs, addLog } = useApp();
-  const manager = useReaderManager();
+  const {
+    globalConfig, setGlobalConfig, token, setToken, logs, addLog,
+    readers, readerStates,
+    handleAddReader, handleRemoveReader, handleUpdateReader, handleTestReader, handleGenerateToken,
+  } = useApp();
 
   const [tags, setTags] = useState<TagRegistro[]>([]);
   const [loading, setLoading] = useState(false);
@@ -50,22 +51,6 @@ export default function TagsPage() {
   // Modals
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
-
-  // Token generation
-  const handleGenerateToken = async () => {
-    try {
-      addLog("Generando token...", "info");
-      const t = await rfidService.generateToken(
-        globalConfig.baseUrl,
-        globalConfig.dias,
-        globalConfig.mockMode
-      );
-      setToken(t);
-      addLog(`Token generado`, "success");
-    } catch (e: unknown) {
-      addLog(`Error token: ${(e as Error).message}`, "error");
-    }
-  };
 
   // ── Fetch tags ──
   const fetchTags = useCallback(async () => {
@@ -168,7 +153,7 @@ export default function TagsPage() {
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a]">
       <Navbar
-        readersCount={manager.readers.length}
+        readersCount={readers.length}
         mockMode={globalConfig.mockMode}
         logsCount={logs.length}
         onOpenLogs={() => setIsLogOpen(true)}
@@ -452,13 +437,13 @@ export default function TagsPage() {
         onClose={() => setIsConfigOpen(false)}
         globalConfig={globalConfig}
         setGlobalConfig={setGlobalConfig}
-        readers={manager.readers}
-        readerStates={manager.readerStates}
+        readers={readers}
+        readerStates={readerStates}
         onGenerateToken={handleGenerateToken}
-        onAddReader={manager.handleAddReader}
-        onRemoveReader={manager.handleRemoveReader}
-        onUpdateReader={manager.handleUpdateReader}
-        onTestReader={manager.handleTestReader}
+        onAddReader={handleAddReader}
+        onRemoveReader={handleRemoveReader}
+        onUpdateReader={handleUpdateReader}
+        onTestReader={handleTestReader}
         token={token}
       />
 
