@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Activity, RefreshCw, Clock, Zap } from "lucide-react";
+import { Activity, RefreshCw, Zap } from "lucide-react";
 
 import { StatCard } from "../components/StatCard";
 import { ConfigModal } from "../components/ConfigModal";
@@ -43,10 +43,6 @@ export default function RFIDMonitor() {
     handleConnect,
     handleDisconnect,
     handleTestReader,
-    handleConnectAntenna,
-    handleDisconnectAntenna,
-    handleStartAntenna,
-    handleStopAntenna,
   } = manager;
 
   const { polling, setPolling, togglePolling } = useRfidPolling({
@@ -107,12 +103,6 @@ export default function RFIDMonitor() {
     addLog(`Lista de ${reader.name} limpiada`, "info");
   }, [activeReaderId, addLog, manager, readersRef, globalConfigRef, tokenRef]);
 
-  // ── Antenna start triggers polling ──
-  const handleStartAntennaWithPolling = (readerId: string, antNum: number) => {
-    handleStartAntenna(readerId, antNum);
-    if (!polling) setPolling(true);
-  };
-
   // ── Register tag from live reading ──
   const handleRegisterTag = (tagId: string) => {
     setRegisterTagId(tagId);
@@ -130,6 +120,10 @@ export default function RFIDMonitor() {
 
   const totalTags = Object.values(readerStates).reduce((sum, s) => sum + s.tags.length, 0);
   const totalNew = Object.values(readerStates).reduce((sum, s) => sum + s.scanCount, 0);
+  const connectedReaders = readers.filter((r) => {
+    const s = readerStates[r.id]?.status;
+    return s === "connected" || s === "reading";
+  }).length;
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a]">
@@ -141,13 +135,29 @@ export default function RFIDMonitor() {
         onOpenConfig={() => setIsConfigOpen(true)}
       />
 
-      <main className="max-w-7xl mx-auto p-6 lg:p-8 space-y-6">
+      <main className="max-w-7xl mx-auto p-6 lg:p-8 space-y-5">
         {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="TAGs Detectados (total)" value={totalTags} icon={Activity} color="#1e4786" />
-          <StatCard label="Nuevos (Sesión)" value={totalNew} icon={RefreshCw} color="#22c4a1" />
-          <StatCard label="Intervalo" value="2.0s" icon={Clock} color="#64748b" />
-          <StatCard label="Última Sinc" value={activeState.lastUpdate ?? "--:--"} icon={Zap} color="#f59e0b" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard
+            label="TAGs Detectados"
+            value={totalTags}
+            icon={Activity}
+            color="#1e4786"
+            sub={`${connectedReaders} reader${connectedReaders !== 1 ? "s" : ""} activo${connectedReaders !== 1 ? "s" : ""}`}
+          />
+          <StatCard
+            label="Nuevos (Sesión)"
+            value={totalNew}
+            icon={RefreshCw}
+            color="#22c4a1"
+          />
+          <StatCard
+            label="Última Sincronización"
+            value={activeState.lastUpdate ?? "--:--:--"}
+            icon={Zap}
+            color="#f59e0b"
+            sub={polling ? "Tiempo real activo" : "En pausa"}
+          />
         </div>
 
         {/* Controls */}
@@ -158,12 +168,16 @@ export default function RFIDMonitor() {
         />
 
         {/* Reader panel */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
           <ReaderTabs
             readers={readers}
             readerStates={readerStates}
             activeReaderId={activeReaderId}
             onSelectReader={setActiveReaderId}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            token={token}
+            mockMode={globalConfig.mockMode}
           />
 
           {activeReader && (
@@ -172,12 +186,6 @@ export default function RFIDMonitor() {
               readerState={activeState}
               activeAntennaNum={activeAntennaNum}
               onSelectAntenna={setActiveAntennaNum}
-              onConnectAntenna={handleConnectAntenna}
-              onDisconnectAntenna={handleDisconnectAntenna}
-              onStartAntenna={handleStartAntennaWithPolling}
-              onStopAntenna={handleStopAntenna}
-              token={token}
-              mockMode={globalConfig.mockMode}
             />
           )}
 
