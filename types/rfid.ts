@@ -1,3 +1,4 @@
+// ── Tags de lectura en vivo ──
 export interface Tag {
   contador: number;
   tagid: string;
@@ -7,6 +8,55 @@ export interface Tag {
   antena: number;
 }
 
+// ── Registro de Tags (ManteRegistroTag) ──
+export interface TagRegistro {
+  idTag: string;
+  codProducto: string;
+  codBarra: string;
+  codManual: string;
+  descripcion: string;
+  estado: string;
+}
+
+export interface TagRegistroRequest {
+  idope: 1 | 2 | 3 | 4;
+  idTag: string;
+  codProducto: string;
+  codBarra: string;
+  codManual: string;
+  descripcion: string;
+  estado: string;
+}
+
+export interface TagRegistroResponse {
+  codigo: number;
+  mensaje: string;
+  registros: TagRegistro[];
+}
+
+// ── Validación de Recepción ──
+export interface ValidacionLectura {
+  tagid: string;
+  codarticulo: string;
+  codbarra: string;
+  codmanual: string;
+  descripcion: string;
+  estado: string;
+  encontrado: string;
+}
+
+export interface ValidacionRequest {
+  idope: 4;
+  ipreader: string;
+}
+
+export interface ValidacionResponse {
+  codigo: number;
+  mensaje: string;
+  lecturas: ValidacionLectura[];
+}
+
+// ── Reader & Antenna ──
 export type ReaderStatus =
   | "disconnected"
   | "connecting"
@@ -15,11 +65,7 @@ export type ReaderStatus =
   | "error"
   | "testing";
 
-export interface LogEntry {
-  msg: string;
-  type: "info" | "success" | "error" | "default";
-  time: string;
-}
+export type AntennaStatus = "disconnected" | "connecting" | "connected" | "reading";
 
 export interface AntennaConfig {
   numero: number;
@@ -34,8 +80,6 @@ export interface ReaderConfig {
   antenas: AntennaConfig[];
 }
 
-export type AntennaStatus = "disconnected" | "connecting" | "connected" | "reading";
-
 export interface AntennaRuntimeState {
   status: AntennaStatus;
 }
@@ -49,8 +93,16 @@ export interface ReaderRuntimeState {
   antenasState: Record<number, AntennaRuntimeState>;
 }
 
+// ── Config global ──
 export interface GlobalConfig {
   baseUrl: string;
   dias: number;
   mockMode: boolean;
+}
+
+// ── Logs ──
+export interface LogEntry {
+  msg: string;
+  type: "info" | "success" | "error" | "default";
+  time: string;
 }
