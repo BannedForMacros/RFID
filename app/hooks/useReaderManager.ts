@@ -6,7 +6,6 @@ import { useApp } from "../context/AppContext";
 import type {
   ReaderConfig,
   ReaderRuntimeState,
-  AntennaStatus,
 } from "../../types/rfid";
 
 const DEFAULT_READER_STATE: ReaderRuntimeState = {
@@ -63,24 +62,6 @@ export function useReaderManager() {
     []
   );
 
-  const setAntennaStatus = useCallback(
-    (readerId: string, antNum: number, status: AntennaStatus) => {
-      setReaderStates((prev) => {
-        const cur = prev[readerId] ?? DEFAULT_READER_STATE;
-        const newAnt = { ...cur.antenasState, [antNum]: { status } };
-        const antVals = Object.values(newAnt);
-        let readerStatus = cur.status;
-        if (antVals.some((a) => a.status === "reading")) readerStatus = "reading";
-        else if (antVals.some((a) => a.status === "connected" || a.status === "connecting"))
-          readerStatus = "connected";
-        else if (antVals.every((a) => a.status === "disconnected"))
-          readerStatus = "disconnected";
-        return { ...prev, [readerId]: { ...cur, antenasState: newAnt, status: readerStatus } };
-      });
-    },
-    []
-  );
-
   // ── CRUD Readers ──
 
   const handleAddReader = useCallback(() => {
@@ -126,7 +107,7 @@ export function useReaderManager() {
     []
   );
 
-  // ── Conexión / Desconexión ──
+  // ── Conexión / Desconexión del READER (con todas sus antenas) ──
 
   const handleConnect = useCallback(
     async (readerId: string) => {
@@ -136,8 +117,12 @@ export function useReaderManager() {
         addLog("Primero genera un token", "error");
         return;
       }
+      if (reader.antenas.length === 0) {
+        addLog("Agrega al menos una antena al reader antes de conectar", "error");
+        return;
+      }
       updateReaderState(readerId, () => ({ status: "connecting" }));
-      addLog(`Conectando a ${reader.name} (${reader.ip})...`, "info");
+      addLog(`Conectando ${reader.name} (${reader.ip}) con ${reader.antenas.length} antena(s)...`, "info");
       try {
         const cfg = globalConfigRef.current;
         await rfidService.connect(
@@ -148,7 +133,7 @@ export function useReaderManager() {
           cfg.mockMode
         );
         updateReaderState(readerId, () => ({ status: "connected" }));
-        addLog(`${reader.name} conectado`, "success");
+        addLog(`${reader.name} conectado (${reader.antenas.length} antena(s))`, "success");
       } catch (e: unknown) {
         updateReaderState(readerId, () => ({ status: "error" }));
         addLog(`Error conectando ${reader.name}: ${(e as Error).message}`, "error");
@@ -167,7 +152,13 @@ export function useReaderManager() {
       } catch {
         // ignorar
       }
-      updateReaderState(readerId, () => ({ status: "disconnected", tags: [] }));
+      updateReaderState(readerId, () => ({
+        status: "disconnected",
+        tags: [],
+        newTagIds: [],
+        scanCount: 0,
+        lastUpdate: null,
+      }));
       addLog(`${reader.name} desconectado`, "info");
     },
     [addLog, updateReaderState]
@@ -197,80 +188,6 @@ export function useReaderManager() {
     [addLog]
   );
 
-  // ── Control por antena ──
-
-  const handleConnectAntenna = useCallback(
-    async (readerId: string, antNum: number) => {
-      const reader = readersRef.current.find((r) => r.id === readerId);
-      const ant = reader?.antenas.find((a) => a.numero === antNum);
-      if (!reader || !ant) return;
-      setAntennaStatus(readerId, antNum, "connecting");
-      addLog(`Conectando Antena ${antNum} — ${ant.nombre}...`, "info");
-      try {
-        const cfg = globalConfigRef.current;
-        await rfidService.connectAntenna(
-          cfg.baseUrl,
-          tokenRef.current,
-          reader.ip,
-          antNum,
-          ant.potencia,
-          cfg.mockMode
-        );
-        setAntennaStatus(readerId, antNum, "connected");
-        addLog(`Antena ${antNum} — ${ant.nombre} conectada`, "success");
-      } catch (e: unknown) {
-        setAntennaStatus(readerId, antNum, "disconnected");
-        addLog(`Error antena ${antNum}: ${(e as Error).message}`, "error");
-      }
-    },
-    [addLog, setAntennaStatus]
-  );
-
-  const handleDisconnectAntenna = useCallback(
-    async (readerId: string, antNum: number) => {
-      const reader = readersRef.current.find((r) => r.id === readerId);
-      const ant = reader?.antenas.find((a) => a.numero === antNum);
-      if (!reader || !ant) return;
-      try {
-        const cfg = globalConfigRef.current;
-        await rfidService.disconnectAntenna(
-          cfg.baseUrl,
-          tokenRef.current,
-          reader.ip,
-          antNum,
-          cfg.mockMode
-        );
-      } catch {
-        /* ignorar */
-      }
-      setAntennaStatus(readerId, antNum, "disconnected");
-      addLog(`Antena ${antNum} — ${ant.nombre} desconectada`, "info");
-    },
-    [addLog, setAntennaStatus]
-  );
-
-  const handleStartAntenna = useCallback(
-    (readerId: string, antNum: number) => {
-      const reader = readersRef.current.find((r) => r.id === readerId);
-      const ant = reader?.antenas.find((a) => a.numero === antNum);
-      if (!ant) return;
-      setAntennaStatus(readerId, antNum, "reading");
-      addLog(`Antena ${antNum} — ${ant.nombre} iniciando lectura`, "success");
-    },
-    [addLog, setAntennaStatus]
-  );
-
-  const handleStopAntenna = useCallback(
-    (readerId: string, antNum: number) => {
-      const reader = readersRef.current.find((r) => r.id === readerId);
-      const ant = reader?.antenas.find((a) => a.numero === antNum);
-      if (!ant) return;
-      setAntennaStatus(readerId, antNum, "connected");
-      addLog(`Antena ${antNum} — ${ant.nombre} detenida`, "info");
-    },
-    [addLog, setAntennaStatus]
-  );
-
   // ── Datos derivados ──
   const activeState = readerStates[activeReaderId] ?? DEFAULT_READER_STATE;
   const activeReader = readers.find((r) => r.id === activeReaderId);
@@ -296,9 +213,5 @@ export function useReaderManager() {
     handleConnect,
     handleDisconnect,
     handleTestReader,
-    handleConnectAntenna,
-    handleDisconnectAntenna,
-    handleStartAntenna,
-    handleStopAntenna,
   };
 }

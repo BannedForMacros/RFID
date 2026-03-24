@@ -31,10 +31,11 @@ export function useRfidPolling({
   addLog,
 }: UseRfidPollingOptions) {
   const [polling, setPolling] = useState(false);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef(false);
   const addLogRef = useRef(addLog);
 
   useEffect(() => { addLogRef.current = addLog; }, [addLog]);
+  useEffect(() => { pollingRef.current = polling; }, [polling]);
 
   const pollAllReaders = useCallback(async () => {
     const currentReaders = readersRef.current;
@@ -86,25 +87,36 @@ export function useRfidPolling({
     );
   }, [readersRef, readerStatesRef, globalConfigRef, tokenRef, setReaderStates]);
 
+  // Continuous loop: poll → response → poll again immediately (real-time)
   useEffect(() => {
+    let cancelled = false;
+
+    async function loop() {
+      while (!cancelled && pollingRef.current) {
+        await pollAllReaders();
+        // Micro-pause to let React render and avoid locking the thread
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+
     if (polling) {
-      pollAllReaders();
-      pollRef.current = setInterval(pollAllReaders, 2000);
+      loop();
     } else {
-      if (pollRef.current) clearInterval(pollRef.current);
+      // Readers que estaban leyendo pasan a "connected"
       setReaderStates((prev) => {
         const next = { ...prev };
+        let changed = false;
         Object.keys(next).forEach((id) => {
           if (next[id].status === "reading") {
             next[id] = { ...next[id], status: "connected" };
+            changed = true;
           }
         });
-        return next;
+        return changed ? next : prev;
       });
     }
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+
+    return () => { cancelled = true; };
   }, [polling, pollAllReaders, setReaderStates]);
 
   const togglePolling = useCallback(
@@ -118,7 +130,7 @@ export function useRfidPolling({
         return;
       }
       setPolling((p) => {
-        addLog(!p ? "Lectura iniciada (intervalo 2s)" : "Lectura pausada", !p ? "success" : "info");
+        addLog(!p ? "Lectura en tiempo real iniciada" : "Lectura pausada", !p ? "success" : "info");
         return !p;
       });
     },
