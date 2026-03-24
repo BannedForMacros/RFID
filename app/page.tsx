@@ -1,5 +1,5 @@
-import RFIDMonitor from "./rfid/RFIDMonitor";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <RFIDMonitor />;
+  redirect("/rfid");
 }
