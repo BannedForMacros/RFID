@@ -272,9 +272,16 @@ export default function ValidationPage() {
               color="#22c4a1"
             />
             <StatBox
+              label="No Encontrados"
+              value={totalLeidos - encontrados}
+              icon={<XCircle size={18} className="text-red-500" />}
+              color="#ef4444"
+              alert={inactivos > 0}
+            />
+            <StatBox
               label="No Pertenece"
               value={noEncontrados}
-              icon={<XCircle size={18} className="text-amber-500" />}
+              icon={<Ban size={18} className="text-amber-500" />}
               color="#f59e0b"
             />
           </div>
