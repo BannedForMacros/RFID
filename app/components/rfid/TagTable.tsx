@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Trash2, WifiOff, Save, Radio } from "lucide-react";
+import { Download, Trash2, WifiOff, Save, Radio, Eye } from "lucide-react";
 import type {
   Tag,
   TagRegistro,
@@ -33,6 +33,7 @@ interface TagTableProps {
   onDownloadTXT: () => void;
   onClear: () => void;
   onRegisterTag?: (tagId: string) => void;
+  onViewTag?: (tag: TagRegistro) => void;
   registeredTags?: Map<string, TagRegistro>;
 }
 
@@ -46,6 +47,7 @@ export function TagTable({
   onDownloadTXT,
   onClear,
   onRegisterTag,
+  onViewTag,
   registeredTags,
 }: TagTableProps) {
   const isReading = readerState.status === "reading";
@@ -158,8 +160,8 @@ export function TagTable({
                   >
                     <td className="px-6 py-3.5 text-xs font-mono text-slate-400">{idx + 1}</td>
                     <td className="px-6 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
                           <span
                             className={`font-mono font-bold text-sm tracking-wide ${
                               isNew ? "text-emerald-600" : "text-[#1e4786]"
@@ -167,21 +169,21 @@ export function TagTable({
                           >
                             {tag.tagid}
                           </span>
-                          {registered?.descripcion && (
-                            <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[260px]">
-                              {registered.descripcion}
-                            </p>
+                          {isNew && (
+                            <span className="text-[8px] bg-emerald-500 text-white font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                              nuevo
+                            </span>
+                          )}
+                          {registered && (
+                            <span className="text-[8px] bg-[#1e4786] text-white font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                              registrado
+                            </span>
                           )}
                         </div>
-                        {isNew && (
-                          <span className="text-[8px] bg-emerald-500 text-white font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
-                            nuevo
-                          </span>
-                        )}
-                        {registered && (
-                          <span className="text-[8px] bg-[#1e4786] text-white font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
-                            registrado
-                          </span>
+                        {registered && (registered.codManual || registered.descripcion) && (
+                          <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[280px]">
+                            {[registered.codManual, registered.descripcion].filter(Boolean).join(" — ")}
+                          </p>
                         )}
                       </div>
                     </td>
@@ -204,7 +206,15 @@ export function TagTable({
                       {formatDate(tag.fecfin)}
                     </td>
                     <td className="px-6 py-3.5 text-center">
-                      {onRegisterTag && !registered ? (
+                      {registered ? (
+                        <button
+                          onClick={() => onViewTag?.(registered)}
+                          className="p-2 text-slate-300 hover:text-[#1e4786] hover:bg-blue-50 rounded-lg transition-all"
+                          title="Ver detalle"
+                        >
+                          <Eye size={15} />
+                        </button>
+                      ) : onRegisterTag ? (
                         <button
                           onClick={() => onRegisterTag(tag.tagid)}
                           className="p-2 text-slate-300 hover:text-[#22c4a1] hover:bg-emerald-50 rounded-lg transition-all"
@@ -212,8 +222,6 @@ export function TagTable({
                         >
                           <Save size={15} />
                         </button>
-                      ) : registered ? (
-                        <span className="text-[10px] text-slate-400 font-mono">—</span>
                       ) : null}
                     </td>
                   </tr>

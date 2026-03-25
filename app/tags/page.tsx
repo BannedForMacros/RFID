@@ -13,6 +13,7 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle,
+  RotateCcw,
 } from "lucide-react";
 
 import { Navbar } from "../components/rfid/Navbar";
@@ -278,19 +279,29 @@ export default function TagsPage() {
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            {(tag.estado === "0" || tag.estado === "I") ? (
+                              <button
+                                onClick={() => addLog(`Reactivar tag ${tag.idTag} (próximamente)`, "info")}
+                                className="p-1.5 text-slate-400 hover:text-emerald-500 transition-colors"
+                                title="Reactivar"
+                              >
+                                <RotateCcw size={15} />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleDelete(tag.idTag)}
+                                className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                                title="Eliminar"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
                             <button
                               onClick={() => openEdit(tag)}
                               className="p-1.5 text-slate-400 hover:text-[#1e4786] transition-colors"
                               title="Editar"
                             >
                               <Edit3 size={15} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(tag.idTag)}
-                              className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
-                              title="Eliminar"
-                            >
-                              <Trash2 size={15} />
                             </button>
                           </div>
                         </td>

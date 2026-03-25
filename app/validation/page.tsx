@@ -14,6 +14,7 @@ import {
   Search,
   Radio,
   Ban,
+  Trash2,
 } from "lucide-react";
 
 import { Navbar } from "../components/rfid/Navbar";
@@ -21,6 +22,7 @@ import { LogModal } from "../components/rfid/LogModal";
 import { ConfigModal } from "../components/ConfigModal";
 import { useApp } from "../context/AppContext";
 import { validationService } from "../services/validationService";
+import { rfidService } from "../services/rfidService";
 import type { ValidacionLectura } from "../../types/rfid";
 
 export default function ValidationPage() {
@@ -99,8 +101,9 @@ export default function ValidationPage() {
     return () => { cancelled = true; };
   }, [validating, pollValidation]);
 
-  // ── Start validation ──
-  const handleStartValidation = () => {
+  // ── Start validation (connect + read) ──
+  const [connecting, setConnecting] = useState(false);
+  const handleStartValidation = async () => {
     if (globalConfig.mockMode) {
       addLog("La validación requiere conexión a la API real", "error");
       return;
@@ -109,16 +112,42 @@ export default function ValidationPage() {
       addLog("Ingresa la IP del reader", "error");
       return;
     }
+    setConnecting(true);
+    addLog(`Conectando reader ${readerIp}...`, "info");
+    try {
+      await rfidService.connect(globalConfig.baseUrl, token, readerIp, 20, globalConfig.mockMode);
+      addLog(`Reader ${readerIp} conectado`, "success");
+    } catch (e: unknown) {
+      addLog(`Error conectando: ${(e as Error).message}`, "error");
+      setConnecting(false);
+      return;
+    }
+    setConnecting(false);
     setResults([]);
     setHasValidated(true);
     addLog(`Validación en tiempo real iniciada (${readerIp})`, "success");
     setValidating(true);
   };
 
-  // ── Stop validation ──
-  const handleStopValidation = () => {
+  // ── Stop validation (+ disconnect) ──
+  const handleStopValidation = async () => {
     setValidating(false);
     addLog("Validación detenida", "info");
+    try {
+      await rfidService.disconnect(globalConfig.baseUrl, token, readerIp, globalConfig.mockMode);
+      addLog(`Reader ${readerIp} desconectado`, "info");
+    } catch { /* ignorar */ }
+  };
+
+  // ── Clear view (ope 3 + limpiar vista) ──
+  const handleClearView = async () => {
+    try {
+      await rfidService.clearReadings(globalConfig.baseUrl, token, readerIp, globalConfig.mockMode);
+    } catch { /* ignorar */ }
+    setResults([]);
+    setHasValidated(false);
+    setSearch("");
+    addLog("Lista de lecturas limpiada", "info");
   };
 
   // ── Stats ──
@@ -194,22 +223,36 @@ export default function ValidationPage() {
                 disabled={validating}
               />
             </div>
-            {!validating ? (
+            <div className="flex gap-2">
+              {!validating ? (
+                <button
+                  onClick={handleStartValidation}
+                  disabled={connecting || globalConfig.mockMode || !readerIp.trim()}
+                  className="flex items-center justify-center gap-2 bg-[#1e4786] text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:brightness-110 disabled:opacity-50 transition-all"
+                >
+                  {connecting ? (
+                    <><Loader2 size={16} className="animate-spin" /> Conectando...</>
+                  ) : (
+                    <><Play size={16} fill="white" /> Iniciar</>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleStopValidation}
+                  className="flex items-center justify-center gap-2 bg-red-500 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:brightness-110 transition-all"
+                >
+                  <Square size={16} fill="white" /> Detener
+                </button>
+              )}
               <button
-                onClick={handleStartValidation}
-                disabled={globalConfig.mockMode || !readerIp.trim()}
-                className="flex items-center justify-center gap-2 bg-[#1e4786] text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:brightness-110 disabled:opacity-50 transition-all"
+                onClick={handleClearView}
+                disabled={validating || results.length === 0}
+                className="flex items-center justify-center gap-2 border border-slate-200 text-slate-500 px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50 disabled:opacity-40 transition-all"
+                title="Limpiar vista"
               >
-                <Play size={16} fill="white" /> Iniciar Validación
+                <Trash2 size={16} /> Limpiar
               </button>
-            ) : (
-              <button
-                onClick={handleStopValidation}
-                className="flex items-center justify-center gap-2 bg-red-500 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:brightness-110 transition-all"
-              >
-                <Square size={16} fill="white" /> Detener Validación
-              </button>
-            )}
+            </div>
           </div>
         </div>
 
@@ -229,17 +272,10 @@ export default function ValidationPage() {
               color="#22c4a1"
             />
             <StatBox
-              label="No Encontrados"
+              label="No Pertenece"
               value={noEncontrados}
               icon={<XCircle size={18} className="text-amber-500" />}
               color="#f59e0b"
-            />
-            <StatBox
-              label="Inactivos"
-              value={inactivos}
-              icon={<Ban size={18} className="text-red-500" />}
-              color="#ef4444"
-              alert={inactivos > 0}
             />
           </div>
         )}

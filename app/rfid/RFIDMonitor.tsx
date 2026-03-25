@@ -17,6 +17,7 @@ import { useApp } from "../context/AppContext";
 import { useDownload } from "../hooks/useDownload";
 import { rfidService } from "../services/rfidService";
 import { tagService } from "../services/tagService";
+import Modal from "../components/Modal";
 import type { TagRegistro } from "../../types/rfid";
 
 export default function RFIDMonitor() {
@@ -56,6 +57,7 @@ export default function RFIDMonitor() {
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [registerTagId, setRegisterTagId] = useState("");
+  const [viewTag, setViewTag] = useState<TagRegistro | null>(null);
 
   // ── Clear view ──
   const handleClearView = useCallback(async () => {
@@ -177,6 +179,7 @@ export default function RFIDMonitor() {
             onDownloadTXT={() => downloadTXT(activeTags, activeReader)}
             onClear={handleClearView}
             onRegisterTag={handleRegisterTag}
+            onViewTag={(t) => setViewTag(t)}
             registeredTags={registeredTags}
           />
         </div>
@@ -205,6 +208,20 @@ export default function RFIDMonitor() {
         onClose={() => setIsRegisterOpen(false)}
         prefilledTagId={registerTagId}
       />
+
+      {/* Tag detail modal */}
+      <Modal isOpen={!!viewTag} onClose={() => setViewTag(null)} title="Detalle del Tag" size="md">
+        {viewTag && (
+          <div className="space-y-3 text-sm">
+            {([["ID Tag", viewTag.idTag], ["Cód. Producto", viewTag.codProducto], ["Cód. Barra", viewTag.codBarra], ["Cód. Manual", viewTag.codManual], ["Descripción", viewTag.descripcion], ["Estado", viewTag.estado === "1" || viewTag.estado === "A" ? "Activo" : "Inactivo"]] as [string, string][]).map(([label, val]) => (
+              <div key={label} className="flex justify-between border-b border-slate-100 pb-2">
+                <span className="text-slate-400 text-xs font-semibold uppercase">{label}</span>
+                <span className="font-mono text-slate-700">{val || "—"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
 
       <footer className="py-8 text-center text-slate-400 text-[10px] font-mono tracking-[0.2em] uppercase">
         DBPERU RFID Systems · v2.0
