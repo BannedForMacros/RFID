@@ -53,7 +53,9 @@ export interface ValidacionRequest {
 export interface ValidacionResponse {
   codigo: number;
   mensaje: string;
-  lecturas: ValidacionLectura[];
+  cantidadrecep?: string;
+  lecturas?: ValidacionLectura[];
+  faltantes?: ValidacionLectura[];
 }
 
 // ── Reader & Antenna ──

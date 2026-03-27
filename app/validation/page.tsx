@@ -39,8 +39,11 @@ export default function ValidationPage() {
   const [validating, setValidating] = useState(false);
   const validatingRef = useRef(false);
   const [results, setResults] = useState<ValidacionLectura[]>([]);
+  const [missingResults, setMissingResults] = useState<ValidacionLectura[]>([]);
+  const [cantidadRecep, setCantidadRecep] = useState<string>("0");
   const [hasValidated, setHasValidated] = useState(false);
   const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<"lecturas" | "faltantes">("lecturas");
 
   // Refs for polling loop
   const readerIpRef = useRef(readerIp);
@@ -67,7 +70,10 @@ export default function ValidationPage() {
 
     try {
       const res = await validationService.validate(cfg.baseUrl, t, ip);
-      if (res.codigo === 1) {
+      if (res.codigo === 1 || res.codigo === 0) {
+        if (res.cantidadrecep) setCantidadRecep(res.cantidadrecep);
+        if (res.faltantes) setMissingResults(res.faltantes);
+
         setResults((prev) => {
           const prevSet = new Set(prev.map((r) => r.tagid));
           const newOnes = (res.lecturas ?? []).filter((r) => !prevSet.has(r.tagid));
@@ -124,6 +130,8 @@ export default function ValidationPage() {
     }
     setConnecting(false);
     setResults([]);
+    setMissingResults([]);
+    setCantidadRecep("0");
     setHasValidated(true);
     addLog(`Validación en tiempo real iniciada (${readerIp})`, "success");
     setValidating(true);
@@ -145,6 +153,8 @@ export default function ValidationPage() {
       await rfidService.clearReadings(globalConfig.baseUrl, token, readerIp, globalConfig.mockMode);
     } catch { /* ignorar */ }
     setResults([]);
+    setMissingResults([]);
+    setCantidadRecep("0");
     setHasValidated(false);
     setSearch("");
     addLog("Lista de lecturas limpiada", "info");
@@ -157,11 +167,12 @@ export default function ValidationPage() {
   const inactivos = results.filter((r) => isTagInactive(r)).length;
 
   // ── Filter ──
-  const filteredResults = results.filter(
+  const currentData = activeTab === "lecturas" ? results : missingResults;
+  const filteredResults = currentData.filter(
     (r) =>
-      r.tagid.toLowerCase().includes(search.toLowerCase()) ||
-      r.descripcion.toLowerCase().includes(search.toLowerCase()) ||
-      r.codarticulo.toLowerCase().includes(search.toLowerCase())
+      r.tagid?.toLowerCase().includes(search.toLowerCase()) ||
+      r.descripcion?.toLowerCase().includes(search.toLowerCase()) ||
+      r.codarticulo?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -258,7 +269,13 @@ export default function ValidationPage() {
 
         {/* Stats Cards */}
         {hasValidated && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <StatBox
+              label="Esperados"
+              value={parseInt(cantidadRecep) || 0}
+              icon={<BarChart3 size={18} className="text-[#8b5cf6]" />}
+              color="#8b5cf6"
+            />
             <StatBox
               label="Total Leídos"
               value={totalLeidos}
@@ -291,15 +308,35 @@ export default function ValidationPage() {
         {hasValidated && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                <BarChart3 size={18} /> Resultados de Validación
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setActiveTab("lecturas")}
+                  className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${
+                    activeTab === "lecturas" ? "border-[#1e4786] text-[#1e4786]" : "border-transparent text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <BarChart3 size={18} /> Lecturas
+                </button>
+                <button
+                  onClick={() => setActiveTab("faltantes")}
+                  className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${
+                    activeTab === "faltantes" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <AlertCircle size={18} /> Faltantes
+                  {missingResults.length > 0 && (
+                    <span className="bg-amber-100 text-amber-700 py-0.5 px-2 rounded-full text-[10px] ml-1">
+                      {missingResults.length}
+                    </span>
+                  )}
+                </button>
                 {validating && (
                   <span className="flex items-center gap-1.5 ml-2 text-[10px] text-emerald-600 font-semibold">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     En vivo
                   </span>
                 )}
-              </h3>
+              </div>
               <div className="relative w-full md:w-80">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -421,7 +458,7 @@ export default function ValidationPage() {
             {filteredResults.length > 0 && (
               <div className="px-6 py-3 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-[11px] text-slate-400 font-mono">
-                  {filteredResults.length} de {results.length} resultado(s)
+                  {filteredResults.length} de {currentData.length} resultado(s)
                 </span>
                 <div className="flex items-center gap-3">
                   {inactivos > 0 && (
