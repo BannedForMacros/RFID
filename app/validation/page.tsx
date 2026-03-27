@@ -33,7 +33,14 @@ export default function ValidationPage() {
   } = useApp();
 
   // Config
-  const [readerIp, setReaderIp] = useState("192.168.10.1");
+  const [readerIp, setReaderIp] = useState(readers.length > 0 ? readers[0].ip : "");
+
+  // Auto-seleccionar primer reader disponible si no hay uno válido
+  useEffect(() => {
+    if (readers.length > 0 && (!readerIp || !readers.find(r => r.ip === readerIp))) {
+      setReaderIp(readers[0].ip);
+    }
+  }, [readers, readerIp]);
 
   // State
   const [validating, setValidating] = useState(false);
@@ -60,6 +67,23 @@ export default function ValidationPage() {
   // Modals
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
+
+  // ── Pre-fetch de esperados ──
+  useEffect(() => {
+    async function fetchInitial() {
+      if (!globalConfig.baseUrl || !token || !readerIp || globalConfig.mockMode) return;
+      try {
+        const res = await validationService.validate(globalConfig.baseUrl, token, readerIp);
+        if (res.codigo === 1 || res.codigo === 0) {
+          if (res.cantidadrecep) setCantidadRecep(res.cantidadrecep);
+          if (res.faltantes) setMissingResults(res.faltantes);
+        }
+      } catch (e) {
+        // Ignorar
+      }
+    }
+    fetchInitial();
+  }, [globalConfig.baseUrl, token, readerIp, globalConfig.mockMode]);
 
   // ── Poll validation (one iteration) ──
   const pollValidation = useCallback(async () => {
@@ -130,8 +154,6 @@ export default function ValidationPage() {
     }
     setConnecting(false);
     setResults([]);
-    setMissingResults([]);
-    setCantidadRecep("0");
     setHasValidated(true);
     addLog(`Validación en tiempo real iniciada (${readerIp})`, "success");
     setValidating(true);
@@ -151,19 +173,25 @@ export default function ValidationPage() {
   const handleClearView = async () => {
     try {
       await rfidService.clearReadings(globalConfig.baseUrl, token, readerIp, globalConfig.mockMode);
+      // Actualizar esperados y faltantes tras limpiar
+      const res = await validationService.validate(globalConfig.baseUrl, token, readerIp);
+      if (res.codigo === 1 || res.codigo === 0) {
+        if (res.cantidadrecep) setCantidadRecep(res.cantidadrecep);
+        if (res.faltantes) setMissingResults(res.faltantes);
+      }
     } catch { /* ignorar */ }
     setResults([]);
-    setMissingResults([]);
-    setCantidadRecep("0");
     setHasValidated(false);
     setSearch("");
     addLog("Lista de lecturas limpiada", "info");
   };
 
   // ── Stats ──
+  const totalEsperados = parseInt(cantidadRecep) || 0;
   const totalLeidos = results.length;
   const encontrados = results.filter((r) => isTagFound(r)).length;
-  const noEncontrados = results.filter((r) => !isTagFound(r)).length;
+  const noEncontradosCalculados = Math.max(0, totalEsperados - encontrados);
+  const noPertenece = Math.max(0, totalLeidos - encontrados);
   const inactivos = results.filter((r) => isTagInactive(r)).length;
 
   // ── Filter ──
@@ -223,16 +251,36 @@ export default function ValidationPage() {
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div className="space-y-1 md:col-span-2">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                IP del Reader
+              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                Reader de Recepción
               </label>
-              <input
-                className="w-full p-2.5 border border-slate-200 rounded-lg text-sm font-mono focus:border-[#22c4a1] outline-none transition-all disabled:bg-slate-50 disabled:text-slate-400"
-                value={readerIp}
-                onChange={(e) => setReaderIp(e.target.value)}
-                placeholder="192.168.10.1"
-                disabled={validating}
-              />
+              <div className="flex items-center gap-3">
+                <select
+                  className="w-full p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 bg-white focus:border-[#22c4a1] outline-none transition-all disabled:bg-slate-50 disabled:text-slate-400"
+                  value={readerIp}
+                  onChange={(e) => setReaderIp(e.target.value)}
+                  disabled={validating || readers.length === 0}
+                >
+                  {readers.length === 0 ? (
+                    <option value="">Ningún reader configurado en el sistema</option>
+                  ) : (
+                    readers.map((r) => (
+                      <option key={r.id} value={r.ip}>
+                        {r.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                
+                <div 
+                  className="flex-shrink-0 flex items-center gap-2 px-3 py-2.5 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg text-sm font-bold whitespace-nowrap"
+                  title="Cantidad de activos esperados"
+                >
+                  <Tag size={16} /> 
+                  <span className="text-lg leading-none">{parseInt(cantidadRecep) || 0}</span> 
+                  <span className="font-semibold text-xs opacity-80">ACTIVOS</span>
+                </div>
+              </div>
             </div>
             <div className="flex gap-2">
               {!validating ? (
@@ -268,60 +316,55 @@ export default function ValidationPage() {
         </div>
 
         {/* Stats Cards */}
-        {hasValidated && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <StatBox
-              label="Esperados"
-              value={parseInt(cantidadRecep) || 0}
-              icon={<BarChart3 size={18} className="text-[#8b5cf6]" />}
-              color="#8b5cf6"
-            />
-            <StatBox
-              label="Total Leídos"
-              value={totalLeidos}
-              icon={<Tag size={18} className="text-[#1e4786]" />}
-              color="#1e4786"
-            />
-            <StatBox
-              label="Encontrados"
-              value={encontrados}
-              icon={<CheckCircle size={18} className="text-emerald-500" />}
-              color="#22c4a1"
-            />
-            <StatBox
-              label="No Encontrados"
-              value={totalLeidos - encontrados}
-              icon={<XCircle size={18} className="text-red-500" />}
-              color="#ef4444"
-              alert={inactivos > 0}
-            />
-            <StatBox
-              label="No Pertenece"
-              value={noEncontrados}
-              icon={<Ban size={18} className="text-amber-500" />}
-              color="#f59e0b"
-            />
-          </div>
-        )}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <StatBox
+            label="Esperados"
+            value={totalEsperados}
+            icon={<BarChart3 size={18} className="text-[#8b5cf6]" />}
+            color="#8b5cf6"
+          />
+          <StatBox
+            label="Total Leídos"
+            value={totalLeidos}
+            icon={<Tag size={18} className="text-[#1e4786]" />}
+            color="#1e4786"
+          />
+          <StatBox
+            label="Encontrados"
+            value={encontrados}
+            icon={<CheckCircle size={18} className="text-emerald-500" />}
+            color="#22c4a1"
+          />
+          <StatBox
+            label="No Encontrados"
+            value={noEncontradosCalculados}
+            icon={<XCircle size={18} className="text-red-500" />}
+            color="#ef4444"
+            alert={inactivos > 0 && totalEsperados > 0}
+          />
+          <StatBox
+            label="No Pertenece"
+            value={noPertenece}
+            icon={<Ban size={18} className="text-amber-500" />}
+            color="#f59e0b"
+          />
+        </div>
 
         {/* Results Table */}
-        {hasValidated && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => setActiveTab("lecturas")}
-                  className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${
-                    activeTab === "lecturas" ? "border-[#1e4786] text-[#1e4786]" : "border-transparent text-slate-400 hover:text-slate-600"
-                  }`}
+                  className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${activeTab === "lecturas" ? "border-[#1e4786] text-[#1e4786]" : "border-transparent text-slate-400 hover:text-slate-600"
+                    }`}
                 >
                   <BarChart3 size={18} /> Lecturas
                 </button>
                 <button
                   onClick={() => setActiveTab("faltantes")}
-                  className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${
-                    activeTab === "faltantes" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
-                  }`}
+                  className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${activeTab === "faltantes" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
+                    }`}
                 >
                   <AlertCircle size={18} /> Faltantes
                   {missingResults.length > 0 && (
@@ -389,22 +432,20 @@ export default function ValidationPage() {
                       return (
                         <tr
                           key={`${r.tagid}-${idx}`}
-                          className={`group transition-colors ${
-                            inactive
+                          className={`group transition-colors ${inactive
                               ? "bg-red-50/50"
                               : found
                                 ? "hover:bg-slate-50/50"
                                 : "bg-amber-50/30"
-                          }`}
+                            }`}
                         >
                           <td className="px-6 py-4 text-xs font-mono text-slate-400">
                             {idx + 1}
                           </td>
                           <td className="px-6 py-4">
                             <span
-                              className={`font-mono font-bold text-sm ${
-                                inactive ? "text-red-500" : "text-[#1e4786]"
-                              }`}
+                              className={`font-mono font-bold text-sm ${inactive ? "text-red-500" : "text-[#1e4786]"
+                                }`}
                             >
                               {r.tagid}
                             </span>
@@ -476,7 +517,6 @@ export default function ValidationPage() {
               </div>
             )}
           </div>
-        )}
       </main>
 
       <LogModal isOpen={isLogOpen} onClose={() => setIsLogOpen(false)} logs={logs} />
@@ -529,9 +569,8 @@ function StatBox({
 }) {
   return (
     <div
-      className={`bg-white p-5 rounded-xl border shadow-sm ${
-        alert ? "border-red-300 bg-red-50/30" : "border-slate-200"
-      }`}
+      className={`bg-white p-5 rounded-xl border shadow-sm ${alert ? "border-red-300 bg-red-50/30" : "border-slate-200"
+        }`}
     >
       <div className="flex items-center gap-2 text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-mono">
         {icon} {label}

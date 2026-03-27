@@ -16,7 +16,16 @@ export const validationService = {
         ipreader,
       }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-    return res.json();
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    
+    const text = await res.text();
+    if (!text) {
+      return { codigo: 0, mensaje: "Respuesta vacía de la API (204)", lecturas: [], faltantes: [] } as ValidacionResponse;
+    }
+    
+    return JSON.parse(text);
   },
 };
