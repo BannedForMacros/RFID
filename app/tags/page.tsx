@@ -14,6 +14,7 @@ import {
   AlertCircle,
   CheckCircle,
   RotateCcw,
+  Ban,
 } from "lucide-react";
 
 import { Navbar } from "../components/rfid/Navbar";
@@ -291,9 +292,9 @@ export default function TagsPage() {
                               <button
                                 onClick={() => handleDelete(tag.idTag)}
                                 className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
-                                title="Eliminar"
+                                title="Inactivar"
                               >
-                                <Trash2 size={15} />
+                                <Ban size={15} />
                               </button>
                             )}
                             <button
