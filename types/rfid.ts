@@ -19,7 +19,7 @@ export interface TagRegistro {
 }
 
 export interface TagRegistroRequest {
-  idope: 1 | 2 | 3 | 4;
+  idope: 1 | 2 | 3 | 4 | 5;
   idTag: string;
   codProducto: string;
   codBarra: string;

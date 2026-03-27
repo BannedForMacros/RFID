@@ -10,12 +10,14 @@ interface TagRegistrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   prefilledTagId?: string;
+  onSuccess?: (tag: any) => void;
 }
 
 export function TagRegistrationModal({
   isOpen,
   onClose,
   prefilledTagId = "",
+  onSuccess,
 }: TagRegistrationModalProps) {
   const { globalConfig, token, addLog } = useApp();
 
@@ -59,6 +61,9 @@ export function TagRegistrationModal({
 
       if (res.codigo === 1) {
         addLog(`Tag ${form.idTag} registrado exitosamente`, "success");
+        if (onSuccess) {
+          onSuccess({ ...form, estado: "A" });
+        }
         onClose();
         setForm({ idTag: "", codProducto: "", codBarra: "", codManual: "", descripcion: "" });
       } else {

@@ -36,6 +36,12 @@ const EMPTY_FORM: TagRegistro = {
   estado: "A",
 };
 
+const isTagActive = (estado: string | undefined | null) => {
+  if (!estado) return false;
+  const e = String(estado).trim().toUpperCase();
+  return e === "A" || e === "1" || e === "ACTIVO";
+};
+
 export default function TagsPage() {
   const {
     globalConfig, setGlobalConfig, token, setToken, logs, addLog,
@@ -46,6 +52,7 @@ export default function TagsPage() {
   const [tags, setTags] = useState<TagRegistro[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [form, setForm] = useState<TagRegistro>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -80,14 +87,25 @@ export default function TagsPage() {
     if (token && !globalConfig.mockMode) fetchTags();
   }, [token, globalConfig.mockMode, fetchTags]);
 
-  // ── Filter ──
-  const filteredTags = tags.filter(
-    (t) =>
+  // ── Filter & Stats ──
+  const activeTags = tags.filter(t => isTagActive(t.estado)).length;
+  const inactiveTags = tags.length - activeTags;
+
+  const filteredTags = tags.filter((t) => {
+    const isSearchMatch =
       t.idTag.toLowerCase().includes(search.toLowerCase()) ||
       t.descripcion.toLowerCase().includes(search.toLowerCase()) ||
       t.codProducto.toLowerCase().includes(search.toLowerCase()) ||
-      t.codBarra.toLowerCase().includes(search.toLowerCase())
-  );
+      t.codBarra.toLowerCase().includes(search.toLowerCase());
+
+    const isActive = isTagActive(t.estado);
+    const isInactive = !isActive;
+
+    if (statusFilter === "active" && !isActive) return false;
+    if (statusFilter === "inactive" && !isInactive) return false;
+
+    return isSearchMatch;
+  });
 
   // ── CRUD ──
   const openCreate = () => {
@@ -140,6 +158,30 @@ export default function TagsPage() {
       }
     } catch (e: unknown) {
       addLog(`Error: ${(e as Error).message}`, "error");
+    }
+  };
+
+  const handleToggleState = async (tag: TagRegistro) => {
+    // 1. Actualización Visual Optimista Inmediata
+    const isCurrentlyActive = isTagActive(tag.estado);
+    const newEstado = isCurrentlyActive ? "I" : "A";
+
+    setTags((prev) =>
+      prev.map((t) =>
+        t.idTag === tag.idTag ? { ...t, estado: newEstado } : t
+      )
+    );
+
+    // 2. Notificar al backend de forma asíncrona
+    try {
+      const res = await tagService.toggleState(globalConfig.baseUrl, token, tag.idTag, newEstado);
+      if (Number(res.codigo) === 1 || Number(res.codigo) === 0) {
+        addLog(`Estado de ${tag.idTag} guardado en backend`, "success");
+      } else {
+        addLog(`Notificación backend: ${res.mensaje || "Respuesta inusual al cambiar estado"}`, "error");
+      }
+    } catch (e: unknown) {
+      addLog(`Error de conexión al guardar el estado: ${(e as Error).message}`, "error");
     }
   };
 
@@ -204,15 +246,49 @@ export default function TagsPage() {
           </div>
         )}
 
-        {/* Search */}
-        <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:border-[#22c4a1] outline-none transition-all bg-white"
-            placeholder="Buscar por ID, descripción, código de producto o código de barra..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatBox
+            label="Total Registrados"
+            value={tags.length}
+            icon={<Tag size={18} className="text-[#1e4786]" />}
+            color="#1e4786"
           />
+          <StatBox
+            label="Activos"
+            value={activeTags}
+            icon={<CheckCircle size={18} className="text-emerald-500" />}
+            color="#22c4a1"
+          />
+          <StatBox
+            label="Inactivos"
+            value={inactiveTags}
+            icon={<AlertCircle size={18} className="text-red-500" />}
+            color="#ef4444"
+            alert={inactiveTags > 0}
+          />
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:border-[#22c4a1] outline-none transition-all bg-white"
+              placeholder="Buscar por ID, descripción, código de producto o código de barra..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <select
+            className="p-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 bg-white focus:border-[#22c4a1] outline-none transition-all md:w-56 appearance-none cursor-pointer"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
+          >
+            <option value="all">Todos los estados</option>
+            <option value="active">Solo Activos</option>
+            <option value="inactive">Solo Inactivos</option>
+          </select>
         </div>
 
         {/* Table */}
@@ -280,9 +356,9 @@ export default function TagsPage() {
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            {(tag.estado === "0" || tag.estado === "I") ? (
+                            {!isTagActive(tag.estado) ? (
                               <button
-                                onClick={() => addLog(`Reactivar tag ${tag.idTag} (próximamente)`, "info")}
+                                onClick={() => handleToggleState(tag)}
                                 className="p-1.5 text-slate-400 hover:text-emerald-500 transition-colors"
                                 title="Reactivar"
                               >
@@ -290,19 +366,19 @@ export default function TagsPage() {
                               </button>
                             ) : (
                               <button
-                                onClick={() => handleDelete(tag.idTag)}
-                                className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                                onClick={() => handleToggleState(tag)}
+                                className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors"
                                 title="Inactivar"
                               >
                                 <Ban size={15} />
                               </button>
                             )}
                             <button
-                              onClick={() => openEdit(tag)}
-                              className="p-1.5 text-slate-400 hover:text-[#1e4786] transition-colors"
-                              title="Editar"
-                            >
-                              <Edit3 size={15} />
+                                onClick={() => openEdit(tag)}
+                                className="p-1.5 text-slate-400 hover:text-[#1e4786] transition-colors"
+                                title="Editar"
+                              >
+                                <Edit3 size={15} />
                             </button>
                           </div>
                         </td>
@@ -323,11 +399,11 @@ export default function TagsPage() {
               <div className="flex items-center gap-3 text-[11px] text-slate-400">
                 <span className="flex items-center gap-1">
                   <CheckCircle size={11} className="text-emerald-500" />
-                  {tags.filter((t) => t.estado === "A" || t.estado === "1").length} activos
+                  {activeTags} activos
                 </span>
                 <span className="flex items-center gap-1">
                   <AlertCircle size={11} className="text-red-400" />
-                  {tags.filter((t) => t.estado !== "A" && t.estado !== "1").length} inactivos
+                  {inactiveTags} inactivos
                 </span>
               </div>
             </div>
@@ -462,6 +538,35 @@ export default function TagsPage() {
       <footer className="py-8 text-center text-slate-400 text-[10px] font-mono tracking-[0.2em] uppercase">
         DBPERU RFID Systems · v2.0
       </footer>
+    </div>
+  );
+}
+
+// ── Stat Box Component ──
+function StatBox({
+  label,
+  value,
+  icon,
+  color,
+  alert,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  color: string;
+  alert?: boolean;
+}) {
+  return (
+    <div
+      className={`bg-white p-5 rounded-xl border shadow-sm ${alert ? "border-red-300 bg-red-50/30" : "border-slate-200"
+        }`}
+    >
+      <div className="flex items-center gap-2 text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-mono">
+        {icon} {label}
+      </div>
+      <div className="text-3xl font-extrabold font-mono" style={{ color }}>
+        {value}
+      </div>
     </div>
   );
 }

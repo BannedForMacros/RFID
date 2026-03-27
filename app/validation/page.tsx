@@ -23,6 +23,7 @@ import { ConfigModal } from "../components/ConfigModal";
 import { useApp } from "../context/AppContext";
 import { validationService } from "../services/validationService";
 import { rfidService } from "../services/rfidService";
+import { tagService } from "../services/tagService";
 import type { ValidacionLectura } from "../../types/rfid";
 
 export default function ValidationPage() {
@@ -71,19 +72,22 @@ export default function ValidationPage() {
   // ── Pre-fetch de esperados ──
   useEffect(() => {
     async function fetchInitial() {
-      if (!globalConfig.baseUrl || !token || !readerIp || globalConfig.mockMode) return;
+      if (!globalConfig.baseUrl || !token || globalConfig.mockMode) return;
       try {
-        const res = await validationService.validate(globalConfig.baseUrl, token, readerIp);
-        if (res.codigo === 1 || res.codigo === 0) {
-          if (res.cantidadrecep) setCantidadRecep(res.cantidadrecep);
-          if (res.faltantes) setMissingResults(res.faltantes);
+        const res = await tagService.list(globalConfig.baseUrl, token);
+        if (res.codigo === 1 && res.registros) {
+          const actives = res.registros.filter((t) => {
+            const e = String(t.estado).trim().toUpperCase();
+            return e === "A" || e === "1" || e === "ACTIVO";
+          }).length;
+          setCantidadRecep(String(actives));
         }
       } catch (e) {
         // Ignorar
       }
     }
     fetchInitial();
-  }, [globalConfig.baseUrl, token, readerIp, globalConfig.mockMode]);
+  }, [globalConfig.baseUrl, token, globalConfig.mockMode]);
 
   // ── Poll validation (one iteration) ──
   const pollValidation = useCallback(async () => {
@@ -95,7 +99,8 @@ export default function ValidationPage() {
     try {
       const res = await validationService.validate(cfg.baseUrl, t, ip);
       if (res.codigo === 1 || res.codigo === 0) {
-        if (res.cantidadrecep) setCantidadRecep(res.cantidadrecep);
+        const cant = res.cantidadrecep ?? (res as any).cantidadRecep ?? (res as any).CantidadRecep;
+        if (cant !== undefined && cant !== null) setCantidadRecep(String(cant));
         if (res.faltantes) setMissingResults(res.faltantes);
 
         setResults((prev) => {
@@ -173,14 +178,9 @@ export default function ValidationPage() {
   const handleClearView = async () => {
     try {
       await rfidService.clearReadings(globalConfig.baseUrl, token, readerIp, globalConfig.mockMode);
-      // Actualizar esperados y faltantes tras limpiar
-      const res = await validationService.validate(globalConfig.baseUrl, token, readerIp);
-      if (res.codigo === 1 || res.codigo === 0) {
-        if (res.cantidadrecep) setCantidadRecep(res.cantidadrecep);
-        if (res.faltantes) setMissingResults(res.faltantes);
-      }
     } catch { /* ignorar */ }
     setResults([]);
+    setMissingResults([]); // <-- Ahora se limpia el estado faltante
     setHasValidated(false);
     setSearch("");
     addLog("Lista de lecturas limpiada", "info");
@@ -256,7 +256,7 @@ export default function ValidationPage() {
               </label>
               <div className="flex items-center gap-3">
                 <select
-                  className="w-full p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 bg-white focus:border-[#22c4a1] outline-none transition-all disabled:bg-slate-50 disabled:text-slate-400"
+                  className="w-full md:w-auto flex-1 p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 bg-white focus:border-[#22c4a1] outline-none transition-all disabled:bg-slate-50 disabled:text-slate-400"
                   value={readerIp}
                   onChange={(e) => setReaderIp(e.target.value)}
                   disabled={validating || readers.length === 0}
@@ -266,19 +266,19 @@ export default function ValidationPage() {
                   ) : (
                     readers.map((r) => (
                       <option key={r.id} value={r.ip}>
-                        {r.name}
+                         {r.name}
                       </option>
                     ))
                   )}
                 </select>
                 
                 <div 
-                  className="flex-shrink-0 flex items-center gap-2 px-3 py-2.5 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg text-sm font-bold whitespace-nowrap"
-                  title="Cantidad de activos esperados"
+                  className="flex-shrink-0 flex items-center gap-2.5 px-4 py-2 bg-[#22c4a1] border border-emerald-500 text-white rounded-lg shadow-sm"
+                  title="Cantidad de activos esperados provenientes de Mantenimiento"
                 >
-                  <Tag size={16} /> 
-                  <span className="text-lg leading-none">{parseInt(cantidadRecep) || 0}</span> 
-                  <span className="font-semibold text-xs opacity-80">ACTIVOS</span>
+                  <Tag size={18} className="opacity-90" /> 
+                  <span className="text-xl font-black leading-none tracking-tight">{parseInt(cantidadRecep) || 0}</span> 
+                  <span className="font-bold text-[10px] opacity-90 tracking-widest uppercase mt-0.5">Activos</span>
                 </div>
               </div>
             </div>

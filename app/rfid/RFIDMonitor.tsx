@@ -207,6 +207,13 @@ export default function RFIDMonitor() {
         isOpen={isRegisterOpen}
         onClose={() => setIsRegisterOpen(false)}
         prefilledTagId={registerTagId}
+        onSuccess={(newTag: TagRegistro) => {
+          setRegisteredTags((prev) => {
+            const map = new Map(prev);
+            map.set(newTag.idTag, newTag);
+            return map;
+          });
+        }}
       />
 
       {/* Tag detail modal */}

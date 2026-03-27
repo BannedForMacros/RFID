@@ -81,4 +81,17 @@ export const tagService = {
       estado: "",
     }, token);
   },
+
+  /** Cambiar estado de un tag (Activar/Inactivar) */
+  async toggleState(baseUrl: string, token: string, idTag: string, nuevoEstado: string): Promise<TagRegistroResponse> {
+    return tagFetch(buildUrl(baseUrl, API_ENDPOINTS.manteRegistroTag), {
+      idope: 5,
+      idTag,
+      codProducto: "",
+      codBarra: "",
+      codManual: "",
+      descripcion: "",
+      estado: nuevoEstado,
+    }, token);
+  },
 };
