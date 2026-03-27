@@ -249,14 +249,14 @@ export default function ValidationPage() {
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
             Configuración de Validación
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            <div className="space-y-1 md:col-span-2">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                Reader de Recepción
-              </label>
-              <div className="flex items-center gap-3">
+          <div className="flex flex-col md:flex-row gap-6 items-center md:items-end justify-between">
+            <div className="flex-1 w-full max-w-xl space-y-4">
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  Reader de Recepción
+                </label>
                 <select
-                  className="w-full md:w-auto flex-1 p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 bg-white focus:border-[#22c4a1] outline-none transition-all disabled:bg-slate-50 disabled:text-slate-400"
+                  className="w-full md:w-3/4 p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 bg-white focus:border-[#1e4786] outline-none transition-all disabled:bg-slate-50 disabled:text-slate-400"
                   value={readerIp}
                   onChange={(e) => setReaderIp(e.target.value)}
                   disabled={validating || readers.length === 0}
@@ -266,51 +266,58 @@ export default function ValidationPage() {
                   ) : (
                     readers.map((r) => (
                       <option key={r.id} value={r.ip}>
-                         {r.name}
+                        {r.name}
                       </option>
                     ))
                   )}
                 </select>
-                
-                <div 
-                  className="flex-shrink-0 flex items-center gap-2.5 px-4 py-2 bg-[#22c4a1] border border-emerald-500 text-white rounded-lg shadow-sm"
-                  title="Cantidad de activos esperados provenientes de Mantenimiento"
+              </div>
+              
+              <div className="flex gap-2">
+                {!validating ? (
+                  <button
+                    onClick={handleStartValidation}
+                    disabled={connecting || globalConfig.mockMode || !readerIp.trim()}
+                    className="flex items-center justify-center gap-2 bg-[#1e4786] text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-[#14325e] disabled:opacity-50 transition-all"
+                  >
+                    {connecting ? (
+                      <><Loader2 size={16} className="animate-spin" /> Conectando...</>
+                    ) : (
+                      <><Play size={16} fill="white" /> Iniciar</>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStopValidation}
+                    className="flex items-center justify-center gap-2 bg-red-500 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-red-600 transition-all"
+                  >
+                    <Square size={16} fill="white" /> Detener
+                  </button>
+                )}
+                <button
+                  onClick={handleClearView}
+                  disabled={validating || results.length === 0}
+                  className="flex items-center justify-center gap-2 border border-slate-200 text-slate-500 px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50 disabled:opacity-40 transition-all"
+                  title="Limpiar vista"
                 >
-                  <Tag size={18} className="opacity-90" /> 
-                  <span className="text-xl font-black leading-none tracking-tight">{parseInt(cantidadRecep) || 0}</span> 
-                  <span className="font-bold text-[10px] opacity-90 tracking-widest uppercase mt-0.5">Activos</span>
-                </div>
+                  <Trash2 size={16} /> Limpiar
+                </button>
               </div>
             </div>
-            <div className="flex gap-2">
-              {!validating ? (
-                <button
-                  onClick={handleStartValidation}
-                  disabled={connecting || globalConfig.mockMode || !readerIp.trim()}
-                  className="flex items-center justify-center gap-2 bg-[#1e4786] text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:brightness-110 disabled:opacity-50 transition-all"
-                >
-                  {connecting ? (
-                    <><Loader2 size={16} className="animate-spin" /> Conectando...</>
-                  ) : (
-                    <><Play size={16} fill="white" /> Iniciar</>
-                  )}
-                </button>
-              ) : (
-                <button
-                  onClick={handleStopValidation}
-                  className="flex items-center justify-center gap-2 bg-red-500 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:brightness-110 transition-all"
-                >
-                  <Square size={16} fill="white" /> Detener
-                </button>
-              )}
-              <button
-                onClick={handleClearView}
-                disabled={validating || results.length === 0}
-                className="flex items-center justify-center gap-2 border border-slate-200 text-slate-500 px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50 disabled:opacity-40 transition-all"
-                title="Limpiar vista"
-              >
-                <Trash2 size={16} /> Limpiar
-              </button>
+
+            <div 
+              className="flex-shrink-0 flex items-center justify-center gap-5 px-8 py-5 bg-[#1e4786] border-2 border-[#14325e] shadow-xl text-white rounded-2xl w-full md:w-auto"
+              title="Cantidad de activos esperados provenientes de Mantenimiento"
+            >
+              <div className="p-3.5 bg-white/10 rounded-xl shadow-inner hidden sm:block">
+                 <Tag size={36} className="text-[#22c4a1]" />
+              </div>
+              <div className="flex flex-col items-center sm:items-start">
+                <span className="text-6xl font-black leading-none tracking-tighter drop-shadow-md">
+                  {parseInt(cantidadRecep) || 0}
+                </span> 
+                <span className="font-bold text-[12px] opacity-80 tracking-[0.25em] uppercase mt-1">Activos</span>
+              </div>
             </div>
           </div>
         </div>
