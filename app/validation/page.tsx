@@ -272,7 +272,7 @@ export default function ValidationPage() {
                   )}
                 </select>
               </div>
-              
+
               <div className="flex gap-2">
                 {!validating ? (
                   <button
@@ -305,17 +305,17 @@ export default function ValidationPage() {
               </div>
             </div>
 
-            <div 
+            <div
               className="flex-shrink-0 flex items-center justify-center gap-5 px-8 py-5 bg-[#1e4786] border-2 border-[#14325e] shadow-xl text-white rounded-2xl w-full md:w-auto"
               title="Cantidad de activos esperados provenientes de Mantenimiento"
             >
               <div className="p-3.5 bg-white/10 rounded-xl shadow-inner hidden sm:block">
-                 <Tag size={36} className="text-[#22c4a1]" />
+                <Tag size={36} className="text-[#22c4a1]" />
               </div>
               <div className="flex flex-col items-center sm:items-start">
                 <span className="text-6xl font-black leading-none tracking-tighter drop-shadow-md">
                   {parseInt(cantidadRecep) || 0}
-                </span> 
+                </span>
                 <span className="font-bold text-[12px] opacity-80 tracking-[0.25em] uppercase mt-1">Activos</span>
               </div>
             </div>
@@ -331,12 +331,6 @@ export default function ValidationPage() {
             color="#8b5cf6"
           />
           <StatBox
-            label="Total Leídos"
-            value={totalLeidos}
-            icon={<Tag size={18} className="text-[#1e4786]" />}
-            color="#1e4786"
-          />
-          <StatBox
             label="Encontrados"
             value={encontrados}
             icon={<CheckCircle size={18} className="text-emerald-500" />}
@@ -350,6 +344,12 @@ export default function ValidationPage() {
             alert={inactivos > 0 && totalEsperados > 0}
           />
           <StatBox
+            label="Total Leídos"
+            value={totalLeidos}
+            icon={<Tag size={18} className="text-[#1e4786]" />}
+            color="#1e4786"
+          />
+          <StatBox
             label="No Pertenece"
             value={noPertenece}
             icon={<Ban size={18} className="text-amber-500" />}
@@ -359,171 +359,171 @@ export default function ValidationPage() {
 
         {/* Results Table */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="px-6 py-4 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => setActiveTab("lecturas")}
-                  className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${activeTab === "lecturas" ? "border-[#1e4786] text-[#1e4786]" : "border-transparent text-slate-400 hover:text-slate-600"
-                    }`}
-                >
-                  <BarChart3 size={18} /> Lecturas
-                </button>
-                <button
-                  onClick={() => setActiveTab("faltantes")}
-                  className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${activeTab === "faltantes" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
-                    }`}
-                >
-                  <AlertCircle size={18} /> Faltantes
-                  {missingResults.length > 0 && (
-                    <span className="bg-amber-100 text-amber-700 py-0.5 px-2 rounded-full text-[10px] ml-1">
-                      {missingResults.length}
-                    </span>
-                  )}
-                </button>
+          <div className="px-6 py-4 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setActiveTab("lecturas")}
+                className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${activeTab === "lecturas" ? "border-[#1e4786] text-[#1e4786]" : "border-transparent text-slate-400 hover:text-slate-600"
+                  }`}
+              >
+                <BarChart3 size={18} /> Lecturas
+              </button>
+              <button
+                onClick={() => setActiveTab("faltantes")}
+                className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${activeTab === "faltantes" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
+                  }`}
+              >
+                <AlertCircle size={18} /> Faltantes
+                {missingResults.length > 0 && (
+                  <span className="bg-amber-100 text-amber-700 py-0.5 px-2 rounded-full text-[10px] ml-1">
+                    {missingResults.length}
+                  </span>
+                )}
+              </button>
+              {validating && (
+                <span className="flex items-center gap-1.5 ml-2 text-[10px] text-emerald-600 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  En vivo
+                </span>
+              )}
+            </div>
+            <div className="relative w-full md:w-80">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-xs focus:border-[#22c4a1] outline-none transition-all"
+                placeholder="Buscar tag..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-widest text-slate-400 font-bold">
+                  <th className="px-6 py-4">#</th>
+                  <th className="px-6 py-4">Tag ID</th>
+                  <th className="px-6 py-4">Cód. Artículo</th>
+                  <th className="px-6 py-4">Cód. Barra</th>
+                  <th className="px-6 py-4">Cód. Manual</th>
+                  <th className="px-6 py-4">Descripción</th>
+                  <th className="px-6 py-4 text-center">Estado</th>
+                  <th className="px-6 py-4 text-center">Encontrado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredResults.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-16 text-center text-slate-400">
+                      <div className="flex flex-col items-center gap-2 opacity-40">
+                        {validating ? (
+                          <>
+                            <Loader2 size={40} className="animate-spin text-[#22c4a1]" />
+                            <p className="font-medium">Esperando lecturas...</p>
+                          </>
+                        ) : (
+                          <>
+                            <CheckSquare size={40} />
+                            <p className="font-medium">Sin resultados de validación</p>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredResults.map((r, idx) => {
+                    const inactive = isTagInactive(r);
+                    const found = isTagFound(r);
+
+                    return (
+                      <tr
+                        key={`${r.tagid}-${idx}`}
+                        className={`group transition-colors ${inactive
+                          ? "bg-red-50/50"
+                          : found
+                            ? "hover:bg-slate-50/50"
+                            : "bg-amber-50/30"
+                          }`}
+                      >
+                        <td className="px-6 py-4 text-xs font-mono text-slate-400">
+                          {idx + 1}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`font-mono font-bold text-sm ${inactive ? "text-red-500" : "text-[#1e4786]"
+                              }`}
+                          >
+                            {r.tagid}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600">
+                          {r.codarticulo || "\u2014"}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-mono text-slate-600">
+                          {r.codbarra || "\u2014"}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600">
+                          {r.codmanual || "\u2014"}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600 max-w-[180px] truncate">
+                          {r.descripcion || "\u2014"}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {inactive ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-red-100 text-red-600 border-red-300">
+                              <Ban size={10} /> INACTIVO
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-emerald-50 text-emerald-600 border-emerald-200">
+                              ACTIVO
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {found ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-emerald-50 text-emerald-600 border-emerald-200">
+                              <CheckCircle size={10} /> S\u00cd
+                            </span>
+                          ) : inactive ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-red-50 text-red-500 border-red-200">
+                              <Ban size={10} /> NO (INACTIVO)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-amber-50 text-amber-600 border-amber-200">
+                              <XCircle size={10} /> NO
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredResults.length > 0 && (
+            <div className="px-6 py-3 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400 font-mono">
+                {filteredResults.length} de {currentData.length} resultado(s)
+              </span>
+              <div className="flex items-center gap-3">
+                {inactivos > 0 && (
+                  <span className="flex items-center gap-1 text-[11px] font-bold text-red-500">
+                    <Ban size={12} /> {inactivos} inactivo(s)
+                  </span>
+                )}
                 {validating && (
-                  <span className="flex items-center gap-1.5 ml-2 text-[10px] text-emerald-600 font-semibold">
+                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-semibold">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    En vivo
+                    Actualizando en tiempo real
                   </span>
                 )}
               </div>
-              <div className="relative w-full md:w-80">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-xs focus:border-[#22c4a1] outline-none transition-all"
-                  placeholder="Buscar tag..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
             </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="text-[11px] uppercase tracking-widest text-slate-400 font-bold">
-                    <th className="px-6 py-4">#</th>
-                    <th className="px-6 py-4">Tag ID</th>
-                    <th className="px-6 py-4">Cód. Artículo</th>
-                    <th className="px-6 py-4">Cód. Barra</th>
-                    <th className="px-6 py-4">Cód. Manual</th>
-                    <th className="px-6 py-4">Descripción</th>
-                    <th className="px-6 py-4 text-center">Estado</th>
-                    <th className="px-6 py-4 text-center">Encontrado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {filteredResults.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-16 text-center text-slate-400">
-                        <div className="flex flex-col items-center gap-2 opacity-40">
-                          {validating ? (
-                            <>
-                              <Loader2 size={40} className="animate-spin text-[#22c4a1]" />
-                              <p className="font-medium">Esperando lecturas...</p>
-                            </>
-                          ) : (
-                            <>
-                              <CheckSquare size={40} />
-                              <p className="font-medium">Sin resultados de validación</p>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredResults.map((r, idx) => {
-                      const inactive = isTagInactive(r);
-                      const found = isTagFound(r);
-
-                      return (
-                        <tr
-                          key={`${r.tagid}-${idx}`}
-                          className={`group transition-colors ${inactive
-                              ? "bg-red-50/50"
-                              : found
-                                ? "hover:bg-slate-50/50"
-                                : "bg-amber-50/30"
-                            }`}
-                        >
-                          <td className="px-6 py-4 text-xs font-mono text-slate-400">
-                            {idx + 1}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span
-                              className={`font-mono font-bold text-sm ${inactive ? "text-red-500" : "text-[#1e4786]"
-                                }`}
-                            >
-                              {r.tagid}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-600">
-                            {r.codarticulo || "\u2014"}
-                          </td>
-                          <td className="px-6 py-4 text-sm font-mono text-slate-600">
-                            {r.codbarra || "\u2014"}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-600">
-                            {r.codmanual || "\u2014"}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 max-w-[180px] truncate">
-                            {r.descripcion || "\u2014"}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            {inactive ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-red-100 text-red-600 border-red-300">
-                                <Ban size={10} /> INACTIVO
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-emerald-50 text-emerald-600 border-emerald-200">
-                                ACTIVO
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            {found ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-emerald-50 text-emerald-600 border-emerald-200">
-                                <CheckCircle size={10} /> S\u00cd
-                              </span>
-                            ) : inactive ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-red-50 text-red-500 border-red-200">
-                                <Ban size={10} /> NO (INACTIVO)
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold border bg-amber-50 text-amber-600 border-amber-200">
-                                <XCircle size={10} /> NO
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {filteredResults.length > 0 && (
-              <div className="px-6 py-3 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400 font-mono">
-                  {filteredResults.length} de {currentData.length} resultado(s)
-                </span>
-                <div className="flex items-center gap-3">
-                  {inactivos > 0 && (
-                    <span className="flex items-center gap-1 text-[11px] font-bold text-red-500">
-                      <Ban size={12} /> {inactivos} inactivo(s)
-                    </span>
-                  )}
-                  {validating && (
-                    <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-semibold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Actualizando en tiempo real
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          )}
+        </div>
       </main>
 
       <LogModal isOpen={isLogOpen} onClose={() => setIsLogOpen(false)} logs={logs} />
