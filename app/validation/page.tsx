@@ -51,7 +51,7 @@ export default function ValidationPage() {
   const [cantidadRecep, setCantidadRecep] = useState<string>("0");
   const [hasValidated, setHasValidated] = useState(false);
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"lecturas" | "faltantes">("lecturas");
+  const [cardFilter, setCardFilter] = useState<"encontrados" | "no_encontrados" | "leidos" | "no_pertenece">("encontrados");
 
   // Refs for polling loop
   const readerIpRef = useRef(readerIp);
@@ -194,9 +194,23 @@ export default function ValidationPage() {
   const noPertenece = Math.max(0, totalLeidos - encontrados);
   const inactivos = results.filter((r) => isTagInactive(r)).length;
 
-  // ── Filter ──
-  const currentData = activeTab === "lecturas" ? results : missingResults;
-  const filteredResults = currentData.filter(
+  // ── Filter Logic ──
+  const getFilteredData = () => {
+    switch (cardFilter) {
+      case "encontrados":
+        return results.filter(r => isTagFound(r));
+      case "no_encontrados":
+        return missingResults;
+      case "leidos":
+        return results;
+      case "no_pertenece":
+        return results.filter(r => !isTagFound(r));
+      default:
+        return results;
+    }
+  };
+
+  const filteredResults = getFilteredData().filter(
     (r) =>
       r.tagid?.toLowerCase().includes(search.toLowerCase()) ||
       r.descripcion?.toLowerCase().includes(search.toLowerCase()) ||
@@ -216,19 +230,78 @@ export default function ValidationPage() {
       <main className="max-w-7xl mx-auto p-6 lg:p-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
+          <div className="flex flex-col">
             <h2 className="text-2xl font-extrabold text-[#1e4786] flex items-center gap-2">
               <CheckSquare size={24} /> Validación de Recepción
             </h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Verifica la presencia de tags registrados mediante lectura RFID en tiempo real
-            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-sm text-slate-500">
+                Verifica la presencia de tags registrados mediante lectura RFID
+              </p>
+              {validating && (
+                <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-bold">
+                  <Radio size={10} className="animate-pulse" /> EN VIVO
+                </span>
+              )}
+            </div>
           </div>
-          {validating && (
-            <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-full text-[11px] font-bold">
-              <Radio size={12} className="animate-pulse" /> VALIDANDO EN VIVO
-            </span>
-          )}
+
+          {/* Moved Controls to Top Right */}
+          <div className="flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex flex-col">
+              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">Reader</label>
+              <select
+                className="p-1.5 border-none text-xs font-bold text-slate-700 bg-transparent focus:ring-0 outline-none transition-all disabled:text-slate-400 min-w-[140px]"
+                value={readerIp}
+                onChange={(e) => setReaderIp(e.target.value)}
+                disabled={validating || readers.length === 0}
+              >
+                {readers.length === 0 ? (
+                  <option value="">Sin Readers</option>
+                ) : (
+                  readers.map((r) => (
+                    <option key={r.id} value={r.ip}>
+                      {r.name}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            <div className="h-8 w-px bg-slate-100 mx-1" />
+
+            <div className="flex gap-2">
+              {!validating ? (
+                <button
+                  onClick={handleStartValidation}
+                  disabled={connecting || globalConfig.mockMode || !readerIp.trim()}
+                  className="flex items-center justify-center gap-2 bg-[#1e4786] text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-[#14325e] disabled:opacity-50 transition-all shadow-sm"
+                >
+                  {connecting ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Play size={14} fill="currentColor" />
+                  )}
+                  {connecting ? "Conectando..." : "Iniciar"}
+                </button>
+              ) : (
+                <button
+                  onClick={handleStopValidation}
+                  className="flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-600 transition-all shadow-sm"
+                >
+                  <Square size={14} fill="currentColor" /> Detener
+                </button>
+              )}
+              <button
+                onClick={handleClearView}
+                disabled={validating || results.length === 0}
+                className="flex items-center justify-center p-2 border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-all"
+                title="Limpiar vista"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Mock warning */}
@@ -244,146 +317,72 @@ export default function ValidationPage() {
           </div>
         )}
 
-        {/* Config Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
-            Configuración de Validación
-          </h3>
-          <div className="flex flex-col md:flex-row gap-6 items-center md:items-end justify-between">
-            <div className="flex-1 w-full max-w-xl space-y-4">
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                  Reader de Recepción
-                </label>
-                <select
-                  className="w-full md:w-3/4 p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 bg-white focus:border-[#1e4786] outline-none transition-all disabled:bg-slate-50 disabled:text-slate-400"
-                  value={readerIp}
-                  onChange={(e) => setReaderIp(e.target.value)}
-                  disabled={validating || readers.length === 0}
-                >
-                  {readers.length === 0 ? (
-                    <option value="">Ningún reader configurado en el sistema</option>
-                  ) : (
-                    readers.map((r) => (
-                      <option key={r.id} value={r.ip}>
-                        {r.name}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
 
-              <div className="flex gap-2">
-                {!validating ? (
-                  <button
-                    onClick={handleStartValidation}
-                    disabled={connecting || globalConfig.mockMode || !readerIp.trim()}
-                    className="flex items-center justify-center gap-2 bg-[#1e4786] text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-[#14325e] disabled:opacity-50 transition-all"
-                  >
-                    {connecting ? (
-                      <><Loader2 size={16} className="animate-spin" /> Conectando...</>
-                    ) : (
-                      <><Play size={16} fill="white" /> Iniciar</>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleStopValidation}
-                    className="flex items-center justify-center gap-2 bg-red-500 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-red-600 transition-all"
-                  >
-                    <Square size={16} fill="white" /> Detener
-                  </button>
-                )}
-                <button
-                  onClick={handleClearView}
-                  disabled={validating || results.length === 0}
-                  className="flex items-center justify-center gap-2 border border-slate-200 text-slate-500 px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50 disabled:opacity-40 transition-all"
-                  title="Limpiar vista"
-                >
-                  <Trash2 size={16} /> Limpiar
-                </button>
-              </div>
-            </div>
 
-            <div
-              className="flex-shrink-0 flex items-center justify-center gap-5 px-8 py-5 bg-[#1e4786] border-2 border-[#14325e] shadow-xl text-white rounded-2xl w-full md:w-auto"
-              title="Cantidad de activos esperados provenientes de Mantenimiento"
-            >
-              <div className="p-3.5 bg-white/10 rounded-xl shadow-inner hidden sm:block">
-                <Tag size={36} className="text-[#22c4a1]" />
-              </div>
-              <div className="flex flex-col items-center sm:items-start">
-                <span className="text-6xl font-black leading-none tracking-tighter drop-shadow-md">
-                  {parseInt(cantidadRecep) || 0}
-                </span>
-                <span className="font-bold text-[12px] opacity-80 tracking-[0.25em] uppercase mt-1">Activos</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
+        {/* Stats Cards / Filters */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <StatBox
-            label="Esperados"
+            label="Activos Esperados"
             value={totalEsperados}
-            icon={<BarChart3 size={18} className="text-[#8b5cf6]" />}
-            color="#8b5cf6"
+            icon={<Tag size={18} className="text-[#22c4a1]" />}
+            color="#22c4a1"
+            isReference={true}
           />
           <StatBox
             label="Encontrados"
             value={encontrados}
             icon={<CheckCircle size={18} className="text-emerald-500" />}
             color="#22c4a1"
+            onClick={() => setCardFilter("encontrados")}
+            isSelected={cardFilter === "encontrados"}
           />
           <StatBox
             label="No Encontrados"
             value={noEncontradosCalculados}
             icon={<XCircle size={18} className="text-red-500" />}
             color="#ef4444"
-            alert={inactivos > 0 && totalEsperados > 0}
+            alert={noEncontradosCalculados > 0}
+            onClick={() => setCardFilter("no_encontrados")}
+            isSelected={cardFilter === "no_encontrados"}
           />
           <StatBox
             label="Total Leídos"
             value={totalLeidos}
             icon={<Tag size={18} className="text-[#1e4786]" />}
             color="#1e4786"
+            onClick={() => setCardFilter("leidos")}
+            isSelected={cardFilter === "leidos"}
           />
           <StatBox
             label="No Pertenece"
             value={noPertenece}
             icon={<Ban size={18} className="text-amber-500" />}
             color="#f59e0b"
+            onClick={() => setCardFilter("no_pertenece")}
+            isSelected={cardFilter === "no_pertenece"}
           />
         </div>
 
-        {/* Results Table */}
+        {/* Results Table Area */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => setActiveTab("lecturas")}
-                className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${activeTab === "lecturas" ? "border-[#1e4786] text-[#1e4786]" : "border-transparent text-slate-400 hover:text-slate-600"
-                  }`}
-              >
-                <BarChart3 size={18} /> Lecturas
-              </button>
-              <button
-                onClick={() => setActiveTab("faltantes")}
-                className={`font-bold text-sm flex items-center gap-2 pb-1 border-b-2 transition-colors ${activeTab === "faltantes" ? "border-amber-500 text-amber-600" : "border-transparent text-slate-400 hover:text-slate-600"
-                  }`}
-              >
-                <AlertCircle size={18} /> Faltantes
-                {missingResults.length > 0 && (
-                  <span className="bg-amber-100 text-amber-700 py-0.5 px-2 rounded-full text-[10px] ml-1">
-                    {missingResults.length}
-                  </span>
-                )}
-              </button>
+              <span className="font-bold text-sm text-[#1e4786] flex items-center gap-2">
+                {cardFilter === "encontrados" && <CheckCircle size={18} className="text-emerald-500" />}
+                {cardFilter === "no_encontrados" && <AlertCircle size={18} className="text-red-500" />}
+                {cardFilter === "leidos" && <BarChart3 size={18} className="text-[#1e4786]" />}
+                {cardFilter === "no_pertenece" && <Ban size={18} className="text-amber-500" />}
+                Mostrando: {
+                  cardFilter === "encontrados" ? "Tags Encontrados" :
+                  cardFilter === "no_encontrados" ? "Tags No Encontrados (Faltantes)" :
+                  cardFilter === "leidos" ? "Total de Tags Leídos" :
+                  "Tags que No Pertenecen"
+                }
+              </span>
               {validating && (
-                <span className="flex items-center gap-1.5 ml-2 text-[10px] text-emerald-600 font-semibold">
+                <span className="flex items-center gap-1.5 text-[10px] text-emerald-600 font-semibold bg-emerald-50/50 px-2 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  En vivo
+                  Actualizando
                 </span>
               )}
             </div>
@@ -506,7 +505,7 @@ export default function ValidationPage() {
           {filteredResults.length > 0 && (
             <div className="px-6 py-3 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
               <span className="text-[11px] text-slate-400 font-mono">
-                {filteredResults.length} de {currentData.length} resultado(s)
+                {filteredResults.length} fila(s) visible(s)
               </span>
               <div className="flex items-center gap-3">
                 {inactivos > 0 && (
@@ -567,22 +566,47 @@ function StatBox({
   icon,
   color,
   alert,
+  onClick,
+  isSelected,
+  isReference,
 }: {
   label: string;
   value: number;
   icon: React.ReactNode;
   color: string;
   alert?: boolean;
+  onClick?: () => void;
+  isSelected?: boolean;
+  isReference?: boolean;
 }) {
+  const bgStyle = isReference 
+    ? { backgroundColor: "#1e4786", borderColor: "#14325e", color: "white" }
+    : {
+        backgroundColor: alert && !isSelected ? "rgba(254, 242, 242, 0.5)" : "white",
+        borderColor: isSelected ? color : alert ? "rgb(252, 165, 165)" : "rgb(226, 232, 240)",
+        color: "inherit"
+      };
+
   return (
     <div
-      className={`bg-white p-5 rounded-xl border shadow-sm ${alert ? "border-red-300 bg-red-50/30" : "border-slate-200"
-        }`}
+      onClick={onClick}
+      className={`p-5 rounded-xl border transition-all duration-200 ${
+        onClick ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5" : "shadow-sm"
+      }`}
+      style={{
+        ...bgStyle,
+        boxShadow: isSelected ? `0 0 0 1px ${color}` : undefined,
+      }}
     >
-      <div className="flex items-center gap-2 text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-mono">
+      <div 
+        className="flex items-center gap-2 text-[10px] uppercase tracking-wider mb-2 font-mono" 
+        style={{ 
+          color: isReference ? "rgba(255,255,255,0.7)" : (isSelected ? color : "rgb(100, 116, 139)"),
+        }}
+      >
         {icon} {label}
       </div>
-      <div className="text-3xl font-extrabold font-mono" style={{ color }}>
+      <div className="text-3xl font-extrabold font-mono" style={{ color: isReference ? "white" : color }}>
         {value}
       </div>
     </div>

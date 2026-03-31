@@ -246,19 +246,23 @@ export default function TagsPage() {
           </div>
         )}
 
-        {/* Stats Cards */}
+        {/* Stats Cards / Filters */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <StatBox
             label="Total Registrados"
             value={tags.length}
             icon={<Tag size={18} className="text-[#1e4786]" />}
             color="#1e4786"
+            onClick={() => setStatusFilter("all")}
+            isSelected={statusFilter === "all"}
           />
           <StatBox
             label="Activos"
             value={activeTags}
             icon={<CheckCircle size={18} className="text-emerald-500" />}
             color="#22c4a1"
+            onClick={() => setStatusFilter("active")}
+            isSelected={statusFilter === "active"}
           />
           <StatBox
             label="Inactivos"
@@ -266,10 +270,12 @@ export default function TagsPage() {
             icon={<AlertCircle size={18} className="text-red-500" />}
             color="#ef4444"
             alert={inactiveTags > 0}
+            onClick={() => setStatusFilter("inactive")}
+            isSelected={statusFilter === "inactive"}
           />
         </div>
 
-        {/* Filters */}
+        {/* Search */}
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -280,19 +286,22 @@ export default function TagsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <select
-            className="p-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 bg-white focus:border-[#22c4a1] outline-none transition-all md:w-56 appearance-none cursor-pointer"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
-          >
-            <option value="all">Todos los estados</option>
-            <option value="active">Solo Activos</option>
-            <option value="inactive">Solo Inactivos</option>
-          </select>
         </div>
 
-        {/* Table */}
+        {/* Table Area */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          {/* Table Header / Title */}
+          <div className="px-6 py-4 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm text-[#1e4786] flex items-center gap-2">
+                {statusFilter === "active" && <CheckCircle size={18} className="text-emerald-500" />}
+                {statusFilter === "inactive" && <AlertCircle size={18} className="text-red-500" />}
+                {statusFilter === "all" && <Tag size={18} />}
+                Mostrando: {statusFilter === "all" ? "Todos los Tags" : statusFilter === "active" ? "Solo Activos" : "Solo Inactivos"}
+              </span>
+            </div>
+          </div>
+          
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -348,37 +357,26 @@ export default function TagsPage() {
                           {tag.descripcion || "—"}
                         </td>
                         <td className="px-6 py-4 text-center">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${est.cls}`}
+                          <button
+                            onClick={() => handleToggleState(tag)}
+                            title={`Click para ${isTagActive(tag.estado) ? "Inactivar" : "Activar"}`}
+                            className={`group/badge inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold border transition-all hover:scale-105 active:scale-95 ${est.cls}`}
                           >
+                            <span className="relative flex h-2 w-2">
+                              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isTagActive(tag.estado) ? "bg-emerald-400" : "bg-red-400"}`}></span>
+                              <span className={`relative inline-flex rounded-full h-2 w-2 ${isTagActive(tag.estado) ? "bg-emerald-500" : "bg-red-500"}`}></span>
+                            </span>
                             {est.text}
-                          </span>
+                          </button>
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            {!isTagActive(tag.estado) ? (
-                              <button
-                                onClick={() => handleToggleState(tag)}
-                                className="p-1.5 text-slate-400 hover:text-emerald-500 transition-colors"
-                                title="Reactivar"
-                              >
-                                <RotateCcw size={15} />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleToggleState(tag)}
-                                className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors"
-                                title="Inactivar"
-                              >
-                                <Ban size={15} />
-                              </button>
-                            )}
                             <button
                                 onClick={() => openEdit(tag)}
-                                className="p-1.5 text-slate-400 hover:text-[#1e4786] transition-colors"
+                                className="p-2 text-slate-400 hover:text-[#1e4786] hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
                                 title="Editar"
                               >
-                                <Edit3 size={15} />
+                                <Edit3 size={16} />
                             </button>
                           </div>
                         </td>
@@ -549,19 +547,30 @@ function StatBox({
   icon,
   color,
   alert,
+  onClick,
+  isSelected,
 }: {
   label: string;
   value: number;
   icon: React.ReactNode;
   color: string;
   alert?: boolean;
+  onClick?: () => void;
+  isSelected?: boolean;
 }) {
   return (
     <div
-      className={`bg-white p-5 rounded-xl border shadow-sm ${alert ? "border-red-300 bg-red-50/30" : "border-slate-200"
-        }`}
+      onClick={onClick}
+      className={`bg-white p-5 rounded-xl border transition-all duration-200 ${
+        onClick ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5" : "shadow-sm"
+      }`}
+      style={{
+        borderColor: isSelected ? color : alert ? "rgb(252, 165, 165)" : "rgb(226, 232, 240)",
+        boxShadow: isSelected ? `0 0 0 1px ${color}` : undefined,
+        backgroundColor: alert && !isSelected ? "rgba(254, 242, 242, 0.5)" : "white"
+      }}
     >
-      <div className="flex items-center gap-2 text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-mono">
+      <div className="flex items-center gap-2 text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-mono" style={{ color: isSelected ? color : undefined, opacity: isSelected ? 0.8 : 1 }}>
         {icon} {label}
       </div>
       <div className="text-3xl font-extrabold font-mono" style={{ color }}>
