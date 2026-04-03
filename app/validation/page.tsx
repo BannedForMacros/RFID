@@ -15,6 +15,7 @@ import {
   Radio,
   Ban,
   Trash2,
+  RefreshCcw,
 } from "lucide-react";
 
 import { Navbar } from "../components/rfid/Navbar";
@@ -70,24 +71,26 @@ export default function ValidationPage() {
   const [isLogOpen, setIsLogOpen] = useState(false);
 
   // ── Pre-fetch de esperados ──
-  useEffect(() => {
-    async function fetchInitial() {
-      if (!globalConfig.baseUrl || !token || globalConfig.mockMode) return;
-      try {
-        const res = await tagService.list(globalConfig.baseUrl, token);
-        if (res.codigo === 1 && res.registros) {
-          const actives = res.registros.filter((t) => {
-            const e = String(t.estado).trim().toUpperCase();
-            return e === "A" || e === "1" || e === "ACTIVO";
-          }).length;
-          setCantidadRecep(String(actives));
-        }
-      } catch (e) {
-        // Ignorar
+  const fetchExpectedCount = useCallback(async () => {
+    if (!globalConfig.baseUrl || !token || globalConfig.mockMode) return;
+    try {
+      const res = await tagService.list(globalConfig.baseUrl, token);
+      if (res.codigo === 1 && res.registros) {
+        const actives = res.registros.filter((t) => {
+          const e = String(t.estado).trim().toUpperCase();
+          return e === "A" || e === "1" || e === "ACTIVO";
+        }).length;
+        setCantidadRecep(String(actives));
+        addLog(`Conteo de activos actualizado: ${actives}`, "info");
       }
+    } catch (e) {
+      addLog("Error al sincronizar conteo de activos", "error");
     }
-    fetchInitial();
-  }, [globalConfig.baseUrl, token, globalConfig.mockMode]);
+  }, [globalConfig.baseUrl, token, globalConfig.mockMode, addLog]);
+
+  useEffect(() => {
+    fetchExpectedCount();
+  }, [fetchExpectedCount]);
 
   // ── Poll validation (one iteration) ──
   const pollValidation = useCallback(async () => {
@@ -102,6 +105,13 @@ export default function ValidationPage() {
         const cant = res.cantidadrecep ?? (res as any).cantidadRecep ?? (res as any).CantidadRecep;
         if (cant !== undefined && cant !== null) setCantidadRecep(String(cant));
         if (res.faltantes) setMissingResults(res.faltantes);
+        
+        // Log additional info if unrecognizable active tags found
+        const newUnrecognized = (res.lecturas ?? []).filter(r => !isTagFound(r) && !isTagInactive(r));
+        if (newUnrecognized.length > 0) {
+          const ids = newUnrecognized.map(r => r.tagid).join(", ");
+          addLog(`Aviso: ${newUnrecognized.length} tag(s) activos no reconocidos como esperados: ${ids}`, "error");
+        }
 
         setResults((prev) => {
           const prevSet = new Set(prev.map((r) => r.tagid));
@@ -158,6 +168,10 @@ export default function ValidationPage() {
       return;
     }
     setConnecting(false);
+    
+    // Refetch expected count before starting
+    await fetchExpectedCount();
+    
     setResults([]);
     setHasValidated(true);
     addLog(`Validación en tiempo real iniciada (${readerIp})`, "success");
@@ -190,8 +204,8 @@ export default function ValidationPage() {
   const totalEsperados = parseInt(cantidadRecep) || 0;
   const totalLeidos = results.length;
   const encontrados = results.filter((r) => isTagFound(r)).length;
-  const noEncontradosCalculados = Math.max(0, totalEsperados - encontrados);
-  const noPertenece = Math.max(0, totalLeidos - encontrados);
+  const noEncontradosCalculados = hasValidated ? Math.max(0, totalEsperados - encontrados) : 0;
+  const noPertenece = hasValidated ? Math.max(0, totalLeidos - encontrados) : 0;
   const inactivos = results.filter((r) => isTagInactive(r)).length;
 
   // ── Filter Logic ──
@@ -324,9 +338,10 @@ export default function ValidationPage() {
           <StatBox
             label="Activos Esperados"
             value={totalEsperados}
-            icon={<Tag size={18} className="text-[#22c4a1]" />}
+            icon={<Tag size={18} className="text-white" />}
             color="#22c4a1"
             isReference={true}
+            onRefresh={fetchExpectedCount}
           />
           <StatBox
             label="Encontrados"
@@ -337,11 +352,12 @@ export default function ValidationPage() {
             isSelected={cardFilter === "encontrados"}
           />
           <StatBox
-            label="No Encontrados"
+            label="Faltantes"
             value={noEncontradosCalculados}
-            icon={<XCircle size={18} className="text-red-500" />}
+            icon={<XCircle size={18} className="text-white" />}
             color="#ef4444"
-            alert={noEncontradosCalculados > 0}
+            isDanger={true}
+            alert={hasValidated && noEncontradosCalculados > 0}
             onClick={() => setCardFilter("no_encontrados")}
             isSelected={cardFilter === "no_encontrados"}
           />
@@ -374,7 +390,7 @@ export default function ValidationPage() {
                 {cardFilter === "no_pertenece" && <Ban size={18} className="text-amber-500" />}
                 Mostrando: {
                   cardFilter === "encontrados" ? "Tags Encontrados" :
-                  cardFilter === "no_encontrados" ? "Tags No Encontrados (Faltantes)" :
+                  cardFilter === "no_encontrados" ? "Tags Faltantes" :
                   cardFilter === "leidos" ? "Total de Tags Leídos" :
                   "Tags que No Pertenecen"
                 }
@@ -569,6 +585,8 @@ function StatBox({
   onClick,
   isSelected,
   isReference,
+  isDanger,
+  onRefresh,
 }: {
   label: string;
   value: number;
@@ -578,9 +596,23 @@ function StatBox({
   onClick?: () => void;
   isSelected?: boolean;
   isReference?: boolean;
+  isDanger?: boolean;
+  onRefresh?: () => Promise<void> | void;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onRefresh || refreshing) return;
+    setRefreshing(true);
+    await onRefresh();
+    setRefreshing(false);
+  };
+
   const bgStyle = isReference 
     ? { backgroundColor: "#1e4786", borderColor: "#14325e", color: "white" }
+    : isDanger
+    ? { backgroundColor: "#ef4444", borderColor: "#dc2626", color: "white" }
     : {
         backgroundColor: alert && !isSelected ? "rgba(254, 242, 242, 0.5)" : "white",
         borderColor: isSelected ? color : alert ? "rgb(252, 165, 165)" : "rgb(226, 232, 240)",
@@ -590,7 +622,7 @@ function StatBox({
   return (
     <div
       onClick={onClick}
-      className={`p-5 rounded-xl border transition-all duration-200 ${
+      className={`p-5 rounded-xl border transition-all duration-200 relative group/card ${
         onClick ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5" : "shadow-sm"
       }`}
       style={{
@@ -598,15 +630,25 @@ function StatBox({
         boxShadow: isSelected ? `0 0 0 1px ${color}` : undefined,
       }}
     >
+      {onRefresh && (
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="absolute top-3 right-3 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all opacity-0 group-hover/card:opacity-100 disabled:opacity-50"
+          title="Refrescar conteo"
+        >
+          <RefreshCcw size={12} className={refreshing ? "animate-spin" : ""} />
+        </button>
+      )}
       <div 
         className="flex items-center gap-2 text-[10px] uppercase tracking-wider mb-2 font-mono" 
         style={{ 
-          color: isReference ? "rgba(255,255,255,0.7)" : (isSelected ? color : "rgb(100, 116, 139)"),
+          color: (isReference || isDanger) ? "rgba(255,255,255,0.7)" : (isSelected ? color : "rgb(100, 116, 139)"),
         }}
       >
         {icon} {label}
       </div>
-      <div className="text-3xl font-extrabold font-mono" style={{ color: isReference ? "white" : color }}>
+      <div className="text-3xl font-extrabold font-mono" style={{ color: (isReference || isDanger) ? "white" : color }}>
         {value}
       </div>
     </div>
