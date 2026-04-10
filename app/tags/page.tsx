@@ -33,13 +33,14 @@ const EMPTY_FORM: TagRegistro = {
   codBarra: "",
   codManual: "",
   descripcion: "",
-  estado: "A",
+  estado: "1",
 };
 
 const isTagActive = (estado: string | undefined | null) => {
   if (!estado) return false;
   const e = String(estado).trim().toUpperCase();
-  return e === "A" || e === "1" || e === "ACTIVO";
+  // Priorizamos "1", pero mantenemos "A" y "ACTIVO" para compatibilidad con datos existentes si fuera necesario
+  return e === "1" || e === "A" || e === "ACTIVO";
 };
 
 export default function TagsPage() {
@@ -164,7 +165,7 @@ export default function TagsPage() {
   const handleToggleState = async (tag: TagRegistro) => {
     // 1. Actualización Visual Optimista Inmediata
     const isCurrentlyActive = isTagActive(tag.estado);
-    const newEstado = isCurrentlyActive ? "I" : "A";
+    const newEstado = isCurrentlyActive ? "0" : "1";
 
     setTags((prev) =>
       prev.map((t) =>
@@ -189,8 +190,8 @@ export default function TagsPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
 
   const estadoLabel = (estado: string) => {
-    if (estado === "A" || estado === "1") return { text: "ACTIVO", cls: "bg-emerald-50 text-emerald-600 border-emerald-200" };
-    if (estado === "I" || estado === "0") return { text: "INACTIVO", cls: "bg-red-50 text-red-500 border-red-200" };
+    if (estado === "1" || estado === "A") return { text: "ACTIVO", cls: "bg-emerald-50 text-emerald-600 border-emerald-200" };
+    if (estado === "0" || estado === "I") return { text: "INACTIVO", cls: "bg-red-50 text-red-500 border-red-200" };
     return { text: estado.toUpperCase(), cls: "bg-slate-100 text-slate-500 border-slate-200" };
   };
 
@@ -508,8 +509,8 @@ export default function TagsPage() {
                 value={form.estado}
                 onChange={(e) => updateField("estado", e.target.value)}
               >
-                <option value="A">Activo</option>
-                <option value="I">Inactivo</option>
+                <option value="1">Activo</option>
+                <option value="0">Inactivo</option>
               </select>
             </div>
           )}

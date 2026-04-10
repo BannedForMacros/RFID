@@ -62,7 +62,7 @@ export function TagRegistrationModal({
       if (res.codigo === 1) {
         addLog(`Tag ${form.idTag} registrado exitosamente`, "success");
         if (onSuccess) {
-          onSuccess({ ...form, estado: "A" });
+          onSuccess({ ...form, estado: "1" });
         }
         onClose();
         setForm({ idTag: "", codProducto: "", codBarra: "", codManual: "", descripcion: "" });

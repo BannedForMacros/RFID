@@ -52,7 +52,7 @@ export const tagService = {
       codBarra: tag.codBarra,
       codManual: tag.codManual,
       descripcion: tag.descripcion,
-      estado: tag.estado || "A",
+      estado: tag.estado || "1",
     }, token);
   },
 

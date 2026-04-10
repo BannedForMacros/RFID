@@ -78,7 +78,7 @@ export default function ValidationPage() {
       if (res.codigo === 1 && res.registros) {
         const actives = res.registros.filter((t) => {
           const e = String(t.estado).trim().toUpperCase();
-          return e === "A" || e === "1" || e === "ACTIVO";
+          return e === "1" || e === "A" || e === "ACTIVO";
         }).length;
         setCantidadRecep(String(actives));
         addLog(`Conteo de activos actualizado: ${actives}`, "info");
@@ -568,7 +568,7 @@ export default function ValidationPage() {
 // ── Helpers ──
 
 function isTagInactive(r: ValidacionLectura) {
-  return r.estado === "I" || r.estado === "0" || r.estado === "E" || r.estado === "ELIMINADO" || r.estado === "INACTIVO";
+  return r.estado === "0" || r.estado === "I" || r.estado === "E" || r.estado === "ELIMINADO" || r.estado === "INACTIVO";
 }
 
 function isTagFound(r: ValidacionLectura) {
