@@ -7,10 +7,10 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  size?: "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl";
 }
 
-const sizeClass = { md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-3xl" };
+const sizeClass = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-3xl" };
 
 const Modal = ({ isOpen, onClose, title, children, footer, size = "md" }: ModalProps) => {
   // Cerrar con la tecla Esc

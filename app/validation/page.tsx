@@ -31,7 +31,12 @@ export default function ValidationPage() {
   const {
     globalConfig, setGlobalConfig, token, setToken, logs, addLog,
     readers, readerStates,
-    handleAddReader, handleRemoveReader, handleUpdateReader, handleTestReader, handleGenerateToken,
+    activeAntennaNum, setActiveAntennaNum, activeState, activeReader,
+    readersRef, readerStatesRef, globalConfigRef, tokenRef,
+    updateReaderState,
+    handleAddReader, handleRemoveReader, handleUpdateReader,
+    handleConnect, handleDisconnect, handleTestReader, handleGenerateToken,
+    polling, startPolling, stopPolling,
   } = useApp();
 
   // Config
@@ -54,15 +59,11 @@ export default function ValidationPage() {
   const [search, setSearch] = useState("");
   const [cardFilter, setCardFilter] = useState<"encontrados" | "no_encontrados" | "leidos" | "no_pertenece">("encontrados");
 
-  // Refs for polling loop
+  // Refs for local validation polling loop
   const readerIpRef = useRef(readerIp);
-  const tokenRef = useRef(token);
-  const globalConfigRef = useRef(globalConfig);
   const addLogRef = useRef(addLog);
 
   useEffect(() => { readerIpRef.current = readerIp; }, [readerIp]);
-  useEffect(() => { tokenRef.current = token; }, [token]);
-  useEffect(() => { globalConfigRef.current = globalConfig; }, [globalConfig]);
   useEffect(() => { addLogRef.current = addLog; }, [addLog]);
   useEffect(() => { validatingRef.current = validating; }, [validating]);
 
@@ -199,6 +200,14 @@ export default function ValidationPage() {
     setSearch("");
     addLog("Lista de lecturas limpiada", "info");
   };
+
+  // ── Auto-cleanup on unmount ──
+  useEffect(() => {
+    return () => {
+      // Intentamos detener todo al salir de la ruta como medida de seguridad extra
+      stopPolling();
+    };
+  }, [stopPolling]);
 
   // ── Stats ──
   const totalEsperados = parseInt(cantidadRecep) || 0;
