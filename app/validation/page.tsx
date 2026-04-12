@@ -67,6 +67,16 @@ export default function ValidationPage() {
   useEffect(() => { addLogRef.current = addLog; }, [addLog]);
   useEffect(() => { validatingRef.current = validating; }, [validating]);
 
+  // Helper para sincronizar estado global
+  const getReaderIdByIp = (ip: string) => readers.find(r => r.ip === ip)?.id;
+
+  const syncGlobalStatus = useCallback((status: "connected" | "reading" | "disconnected") => {
+    const id = getReaderIdByIp(readerIpRef.current);
+    if (id) {
+      updateReaderState(id, () => ({ status }));
+    }
+  }, [updateReaderState, readers]); // updateReaderState y readers vienen de useApp
+
   // Modals
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
@@ -123,11 +133,12 @@ export default function ValidationPage() {
           return res.lecturas ?? [];
         });
         setHasValidated(true);
+        syncGlobalStatus("reading");
       }
     } catch (e: unknown) {
       log(`Error validación: ${(e as Error).message}`, "error");
     }
-  }, []);
+  }, [syncGlobalStatus]);
 
   // ── Continuous polling loop ──
   useEffect(() => {
@@ -169,6 +180,7 @@ export default function ValidationPage() {
       return;
     }
     setConnecting(false);
+    syncGlobalStatus("connected");
     
     // Refetch expected count before starting
     await fetchExpectedCount();
@@ -186,6 +198,7 @@ export default function ValidationPage() {
     try {
       await rfidService.disconnect(globalConfig.baseUrl, token, readerIp, globalConfig.mockMode);
       addLog(`Reader ${readerIp} desconectado`, "info");
+      syncGlobalStatus("disconnected");
     } catch { /* ignorar */ }
   };
 
@@ -206,8 +219,9 @@ export default function ValidationPage() {
     return () => {
       // Intentamos detener todo al salir de la ruta como medida de seguridad extra
       stopPolling();
+      syncGlobalStatus("disconnected");
     };
-  }, [stopPolling]);
+  }, [stopPolling, syncGlobalStatus]);
 
   // ── Stats ──
   const totalEsperados = parseInt(cantidadRecep) || 0;
