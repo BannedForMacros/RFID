@@ -170,12 +170,12 @@ export function TagTable({
                             {tag.tagid}
                           </span>
                           {isNew && (
-                            <span className="text-[8px] bg-emerald-500 text-white font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                            <span className="text-[9px] bg-emerald-500/10 text-emerald-600 border border-emerald-200 font-black px-2 py-0.5 rounded-full uppercase tracking-tight shrink-0">
                               nuevo
                             </span>
                           )}
                           {registered && (
-                            <span className="text-[8px] bg-[#1e4786] text-white font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                            <span className="text-[9px] bg-blue-500/10 text-blue-600 border border-blue-200 font-black px-2 py-0.5 rounded-full uppercase tracking-tight shrink-0">
                               registrado
                             </span>
                           )}
@@ -188,14 +188,14 @@ export function TagTable({
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-center">
-                      <span className="inline-flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg">
-                        <span className="font-mono font-bold text-[11px] text-[#1e4786]">
+                      <span className="inline-flex items-center gap-1 bg-[#1e4786]/5 border border-[#1e4786]/10 px-2.5 py-1 rounded-full">
+                        <span className="font-mono font-bold text-[10px] text-[#1e4786]">
                           {antCfg?.nombre ?? `Ant. ${tag.antena}`}
                         </span>
                       </span>
                     </td>
                     <td className="px-6 py-3.5 text-center">
-                      <span className="font-mono font-bold text-sm text-slate-600 bg-slate-50 px-2 py-0.5 rounded">
+                      <span className="font-mono font-black text-xs text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg shadow-sm">
                         {tag.contador ?? "—"}
                       </span>
                     </td>
@@ -205,22 +205,24 @@ export function TagTable({
                     <td className="px-6 py-3.5 text-[11px] font-mono text-slate-500">
                       {formatDate(tag.fecfin)}
                     </td>
-                    <td className="px-6 py-3.5 text-center">
+                    <td className="px-6 py-3.5 text-center whitespace-nowrap">
                       {registered ? (
                         <button
                           onClick={() => onViewTag?.(registered)}
-                          className="p-2 text-slate-300 hover:text-[#1e4786] hover:bg-blue-50 rounded-lg transition-all"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-[#1e4786] rounded-lg text-[10px] font-bold hover:bg-blue-100 hover:border-blue-300 transition-all shadow-sm active:scale-95"
                           title="Ver detalle"
                         >
-                          <Eye size={15} />
+                          <Eye size={14} />
+                          <span>DETALLE</span>
                         </button>
                       ) : onRegisterTag ? (
                         <button
                           onClick={() => onRegisterTag(tag.tagid)}
-                          className="p-2 text-slate-300 hover:text-[#22c4a1] hover:bg-emerald-50 rounded-lg transition-all"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-300 text-emerald-600 rounded-lg text-[10px] font-bold hover:bg-emerald-500 hover:text-white hover:border-emerald-600 transition-all shadow-sm active:scale-95"
                           title="Registrar tag"
                         >
-                          <Save size={15} />
+                          <Save size={14} />
+                          <span>REGISTRAR</span>
                         </button>
                       ) : null}
                     </td>
