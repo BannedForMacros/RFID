@@ -331,11 +331,12 @@ export default function ValidationPage() {
               )}
               <button
                 onClick={handleClearView}
-                disabled={validating || results.length === 0}
-                className="flex items-center justify-center p-2 border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-all"
+                disabled={results.length === 0}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-white border-2 border-slate-200 text-slate-500 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-300 hover:text-slate-700 transition-all shadow-sm active:scale-95 disabled:opacity-40"
                 title="Limpiar vista"
               >
                 <Trash2 size={14} />
+                <span>LIMPIAR</span>
               </button>
             </div>
           </div>
@@ -374,16 +375,18 @@ export default function ValidationPage() {
             onClick={() => setCardFilter("encontrados")}
             isSelected={cardFilter === "encontrados"}
           />
-          <StatBox
-            label="Faltantes"
-            value={noEncontradosCalculados}
-            icon={<XCircle size={18} className="text-white" />}
-            color="#ef4444"
-            isDanger={true}
-            alert={hasValidated && noEncontradosCalculados > 0}
-            onClick={() => setCardFilter("no_encontrados")}
-            isSelected={cardFilter === "no_encontrados"}
-          />
+          {(noEncontradosCalculados > 0 || validating) && (
+            <StatBox
+              label="Faltantes"
+              value={noEncontradosCalculados}
+              icon={<XCircle size={18} className="text-white" />}
+              color="#ef4444"
+              isDanger={true}
+              alert={hasValidated && noEncontradosCalculados > 0}
+              onClick={() => setCardFilter("no_encontrados")}
+              isSelected={cardFilter === "no_encontrados"}
+            />
+          )}
           <StatBox
             label="Total Leídos"
             value={totalLeidos}
@@ -392,14 +395,16 @@ export default function ValidationPage() {
             onClick={() => setCardFilter("leidos")}
             isSelected={cardFilter === "leidos"}
           />
-          <StatBox
-            label="No Pertenece"
-            value={noPertenece}
-            icon={<Ban size={18} className="text-amber-500" />}
-            color="#f59e0b"
-            onClick={() => setCardFilter("no_pertenece")}
-            isSelected={cardFilter === "no_pertenece"}
-          />
+          {(noPertenece > 0 || validating) && (
+            <StatBox
+              label="No Pertenece"
+              value={noPertenece}
+              icon={<Ban size={18} className="text-amber-500" />}
+              color="#f59e0b"
+              onClick={() => setCardFilter("no_pertenece")}
+              isSelected={cardFilter === "no_pertenece"}
+            />
+          )}
         </div>
 
         {/* Results Table Area */}
@@ -633,24 +638,24 @@ function StatBox({
   };
 
   const bgStyle = isReference 
-    ? { backgroundColor: "#1e4786", borderColor: "#14325e", color: "white" }
+    ? { backgroundColor: "#1e4786", borderColor: isSelected ? "white" : "#14325e", color: "white" }
     : isDanger
-    ? { backgroundColor: "#ef4444", borderColor: "#dc2626", color: "white" }
+    ? { backgroundColor: "#ef4444", borderColor: isSelected ? "white" : "#dc2626", color: "white" }
     : {
-        backgroundColor: alert && !isSelected ? "rgba(254, 242, 242, 0.5)" : "white",
-        borderColor: isSelected ? color : alert ? "rgb(252, 165, 165)" : "rgb(226, 232, 240)",
+        backgroundColor: isSelected ? `${color}08` : (alert && !isSelected ? "rgba(254, 242, 242, 0.5)" : "white"),
+        borderColor: isSelected ? color : (alert ? "rgb(252, 165, 165)" : "rgb(226, 232, 240)"),
         color: "inherit"
       };
 
   return (
     <div
       onClick={onClick}
-      className={`p-5 rounded-xl border transition-all duration-200 relative group/card ${
+      className={`p-5 rounded-xl border-2 transition-all duration-200 relative group/card ${
         onClick ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5" : "shadow-sm"
       }`}
       style={{
         ...bgStyle,
-        boxShadow: isSelected ? `0 0 0 1px ${color}` : undefined,
+        boxShadow: isSelected ? `0 0 0 4px ${color}20` : undefined,
       }}
     >
       {onRefresh && (

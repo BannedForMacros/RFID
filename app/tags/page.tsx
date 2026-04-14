@@ -61,6 +61,7 @@ export default function TagsPage() {
   // Modals
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   // ── Fetch tags ──
   const fetchTags = useCallback(async () => {
@@ -186,6 +187,46 @@ export default function TagsPage() {
     }
   };
 
+  const handleBulkToggle = async (active: boolean) => {
+    const newEstado = active ? "1" : "0";
+    const targets = filteredTags.filter((t) => isTagActive(t.estado) !== active);
+
+    if (targets.length === 0) {
+      addLog(`No hay tags para ${active ? "activar" : "inactivar"}`, "info");
+      return;
+    }
+
+    const confirmMsg = `¿Desea ${active ? "activar" : "inactivar"} los ${targets.length} tags filtrados?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setBulkLoading(true);
+    let success = 0;
+    
+    // Optimistic update
+    setTags((prev) =>
+      prev.map((t) => {
+        const isTarget = targets.some((tgt) => tgt.idTag === t.idTag);
+        return isTarget ? { ...t, estado: newEstado } : t;
+      })
+    );
+
+    try {
+      // Proceso secuencial para no saturar la API
+      for (const tag of targets) {
+        try {
+          await tagService.toggleState(globalConfig.baseUrl, token, tag.idTag, newEstado);
+          success++;
+        } catch (e) {
+          addLog(`Error en ${tag.idTag}: ${(e as Error).message}`, "error");
+        }
+      }
+      addLog(`${success} tags ${active ? "activados" : "inactivados"} correctamente`, "success");
+    } finally {
+      setBulkLoading(false);
+      fetchTags(); // Sincronización final
+    }
+  };
+
   const updateField = (field: keyof TagRegistro, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -226,12 +267,39 @@ export default function TagsPage() {
             </button>
             <button
               onClick={openCreate}
-              disabled={globalConfig.mockMode}
+              disabled={globalConfig.mockMode || bulkLoading}
               className="flex items-center gap-1.5 bg-[#22c4a1] text-white px-4 py-2 rounded-lg text-sm font-bold hover:brightness-105 disabled:opacity-50 transition-all"
             >
               <Plus size={16} /> Nuevo Tag
             </button>
           </div>
+        </div>
+
+        {/* Bulk Actions Area */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white/50 p-4 rounded-2xl border border-slate-200/60 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mr-2 font-mono">Acciones Masivas:</span>
+            <button
+              onClick={() => handleBulkToggle(true)}
+              disabled={loading || bulkLoading || globalConfig.mockMode || filteredTags.length === 0}
+              className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-600 px-3 py-1.5 rounded-lg text-[11px] font-bold hover:bg-emerald-100 disabled:opacity-40 transition-all shadow-sm active:scale-95"
+            >
+              <CheckCircle size={14} /> Activar Todos ({filteredTags.length})
+            </button>
+            <button
+              onClick={() => handleBulkToggle(false)}
+              disabled={loading || bulkLoading || globalConfig.mockMode || filteredTags.length === 0}
+              className="flex items-center gap-1.5 bg-red-50 border border-red-200 text-red-600 px-3 py-1.5 rounded-lg text-[11px] font-bold hover:bg-red-100 disabled:opacity-40 transition-all shadow-sm active:scale-95"
+            >
+              <Ban size={14} /> Desactivar Todos ({filteredTags.length})
+            </button>
+          </div>
+          
+          {bulkLoading && (
+            <div className="flex items-center gap-2 text-xs font-bold text-[#1e4786] animate-pulse">
+              <Loader2 size={14} className="animate-spin" /> Procesando cambios masivos...
+            </div>
+          )}
         </div>
 
         {/* Mock mode warning */}
