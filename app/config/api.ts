@@ -12,6 +12,10 @@ export const API_ENDPOINTS = {
   // Mantenimiento de Tags
   manteRegistroTag: "/api/Rfid/ManteRegistroTag",
 
+  // Mantenedores (CRUD)
+  mantenedorReader: "/api/Rfid/MantenedorReader",
+  mantenedorAntenas: "/api/Rfid/MantenedorAntenas",
+
   // Validación de Recepción
   validaRecepcion: "/api/Rfid/ValidaRecepcion",
 } as const;
