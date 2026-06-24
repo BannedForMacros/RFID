@@ -127,15 +127,23 @@ export default function MantenedorPage() {
     else fetchAntenas();
   }, [tab, fetchReaders, fetchAntenas]);
 
+  // Los readers se cargan SIEMPRE: la pestaña Readers los lista y el modal de
+  // Antenas los necesita para el select (no dejamos escribir la IP a mano).
   useEffect(() => {
-    if (token && !mock) refresh();
+    if (!token || mock) return;
+    fetchReaders();
+    if (tab === "antenas") fetchAntenas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, mock, tab]);
 
   // ── Abrir modales ──
   const openCreate = () => {
-    if (tab === "readers") setReaderForm(EMPTY_READER);
-    else setAntenaForm(EMPTY_ANTENA);
+    if (tab === "readers") {
+      setReaderForm(EMPTY_READER);
+    } else {
+      // Preseleccionamos el primer reader disponible para minimizar el esfuerzo.
+      setAntenaForm({ ...EMPTY_ANTENA, ip_reader: readerList[0]?.ip ?? "" });
+    }
     setModalMode("create");
   };
 
@@ -145,9 +153,12 @@ export default function MantenedorPage() {
   };
 
   const openEditAntena = (a: AntenaMante) => {
+    // El response trae id_reader (numérico), no la IP. La resolvemos contra la
+    // lista de readers para dejar el select correctamente preseleccionado.
+    const matched = readerList.find((r) => r.id === a.id_reader);
     setAntenaForm({
       id_antena: a.id,
-      ip_reader: "", // el response no trae la IP, solo id_reader; el usuario la confirma/edita
+      ip_reader: matched?.ip ?? "",
       num_antena: a.antena_number,
       descripcion: a.descripcion,
       potencia: a.potencia,
@@ -583,19 +594,25 @@ export default function MantenedorPage() {
         }
       >
         <div className="space-y-4">
-          <Field label="IP del Reader *">
-            <input
-              className="w-full p-2.5 border border-slate-200 rounded-lg text-sm font-mono focus:border-[#22c4a1] outline-none transition-all bg-slate-50"
+          <Field label="Reader *">
+            <select
+              className="w-full p-2.5 border border-slate-200 rounded-lg text-sm font-mono focus:border-[#22c4a1] outline-none transition-all bg-slate-50 disabled:opacity-60"
               value={antenaForm.ip_reader}
               onChange={(e) => setAntenaForm((p) => ({ ...p, ip_reader: e.target.value }))}
-              placeholder="192.168.10.1"
-              list="reader-ips"
-            />
-            <datalist id="reader-ips">
+              disabled={readerList.length === 0}
+            >
+              {readerList.length === 0 && <option value="">— Sin readers registrados —</option>}
               {readerList.map((r) => (
-                <option key={r.id} value={r.ip} />
+                <option key={r.id} value={r.ip}>
+                  {r.ip}{r.descripcion ? ` · ${r.descripcion}` : ""}
+                </option>
               ))}
-            </datalist>
+            </select>
+            {readerList.length === 0 && (
+              <p className="text-[11px] text-amber-600 mt-1 flex items-center gap-1">
+                <AlertCircle size={12} /> Registra un reader antes de crear antenas.
+              </p>
+            )}
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="N° Antena">
