@@ -87,10 +87,9 @@ export default function MantenedorPage() {
 
   // ── Carga de datos ──
   const fetchReaders = useCallback(async () => {
-    if (mock) return;
     setLoading(true);
     try {
-      const res = await readerManteService.list(globalConfig.baseUrl, token);
+      const res = await readerManteService.list(globalConfig.baseUrl, token, mock);
       if (res.codigo === 1) {
         setReaderList(res.listareader ?? []);
         addLog(`${res.listareader?.length ?? 0} reader(s) cargados`, "success");
@@ -105,10 +104,9 @@ export default function MantenedorPage() {
   }, [mock, globalConfig.baseUrl, token, addLog]);
 
   const fetchAntenas = useCallback(async () => {
-    if (mock) return;
     setLoading(true);
     try {
-      const res = await antenaManteService.list(globalConfig.baseUrl, token);
+      const res = await antenaManteService.list(globalConfig.baseUrl, token, mock);
       if (res.codigo === 1) {
         setAntenaList(res.antenas ?? []);
         addLog(`${res.antenas?.length ?? 0} antena(s) cargadas`, "success");
@@ -130,7 +128,7 @@ export default function MantenedorPage() {
   // Los readers se cargan SIEMPRE: la pestaña Readers los lista y el modal de
   // Antenas los necesita para el select (no dejamos escribir la IP a mano).
   useEffect(() => {
-    if (!token || mock) return;
+    if (!mock && !token) return; // el modo real requiere token
     fetchReaders();
     if (tab === "antenas") fetchAntenas();
     // eslint-disable-next-line react-hooks/exhaustive-deps

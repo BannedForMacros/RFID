@@ -39,12 +39,18 @@ export const antenaManteService = {
   /**
    * Listar antenas (op 3).
    * Si `ipReader` trae valor, filtra por las antenas de ese reader; vacío devuelve todas.
+   * En modo simulación devuelve las antenas de `mockApi`.
    */
   async list(
     baseUrl: string,
     token: string,
+    mockMode: boolean = false,
     ipReader: string = ""
   ): Promise<AntenaManteResponse> {
+    if (mockMode) {
+      const antenas = await mockApi.listAntenas();
+      return { codigo: 1, mensaje: "OK (mock)", antenas };
+    }
     return antenaFetch(
       buildUrl(baseUrl, API_ENDPOINTS.mantenedorAntenas),
       {

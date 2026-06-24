@@ -2,10 +2,15 @@
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import { rfidService } from "../services/rfidService";
+import { readerManteService } from "../services/readerManteService";
+import { antenaManteService } from "../services/antenaManteService";
 import type {
+  AntennaConfig,
+  AntenaMante,
   GlobalConfig,
   LogEntry,
   ReaderConfig,
+  ReaderMante,
   ReaderRuntimeState,
 } from "../../types/rfid";
 
@@ -24,6 +29,38 @@ function genId() {
   return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+// ── Estado activo ──
+function isActivo(estado: string | undefined | null) {
+  const e = String(estado ?? "").trim().toUpperCase();
+  return e === "1" || e === "A" || e === "ACTIVO";
+}
+
+/**
+ * Mapea lo que devuelven los mantenedores (ReaderMante + AntenaMante) a la
+ * forma interna que usa la app (ReaderConfig). Solo incluye readers y antenas
+ * con estado activo — los inactivos quedan fuera de la operación.
+ */
+function mapToReaderConfigs(readers: ReaderMante[], antenas: AntenaMante[]): ReaderConfig[] {
+  return readers
+    .filter((r) => isActivo(r.estado))
+    .map((r) => {
+      const antenasReader: AntennaConfig[] = antenas
+        .filter((a) => a.id_reader === r.id && isActivo(a.estado))
+        .sort((a, b) => a.antena_number - b.antena_number)
+        .map((a) => ({
+          numero: a.antena_number,
+          nombre: a.descripcion?.trim() || `Antena ${a.antena_number}`,
+          potencia: a.potencia, // viene en % desde el mantenedor
+        }));
+      return {
+        id: String(r.id),
+        name: r.descripcion?.trim() || r.ip,
+        ip: r.ip,
+        antenas: antenasReader,
+      };
+    });
+}
+
 // ── Context interface ──
 
 interface AppContextValue {
@@ -40,6 +77,8 @@ interface AppContextValue {
 
   // Readers
   readers: ReaderConfig[];
+  loadingReaders: boolean;
+  reloadReaders: () => Promise<void>;
   readerStates: Record<string, ReaderRuntimeState>;
   activeReaderId: string;
   setActiveReaderId: (id: string) => void;
@@ -91,20 +130,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { addLogRef.current = addLog; }, [addLog]);
 
   // ── Readers ──
-  const [readers, setReaders] = useState<ReaderConfig[]>([
-    {
-      id: "r_default",
-      name: "Reader 1",
-      ip: "192.168.10.1",
-      antenas: [
-        { numero: 1, nombre: "Antena 1", potencia: 20 },
-        { numero: 2, nombre: "Antena 2", potencia: 20 },
-      ],
-    },
-  ]);
+  // Nada hardcodeado: la lista se carga desde los mantenedores (ver loadReaders).
+  const [readers, setReaders] = useState<ReaderConfig[]>([]);
   const [readerStates, setReaderStates] = useState<Record<string, ReaderRuntimeState>>({});
-  const [activeReaderId, setActiveReaderId] = useState("r_default");
+  const [activeReaderId, setActiveReaderId] = useState("");
   const [activeAntennaNum, setActiveAntennaNum] = useState<number | null>(null);
+  const [loadingReaders, setLoadingReaders] = useState(false);
 
   // Refs
   const readersRef = useRef(readers);
@@ -127,6 +158,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     []
   );
+
+  // ── Carga desde los mantenedores (fuente de verdad) ──
+  const loadReaders = useCallback(async () => {
+    const cfg = globalConfigRef.current;
+    const t = tokenRef.current;
+    // En modo real se necesita token; en simulación la data viene del mock.
+    if (!cfg.mockMode && !t) return;
+    setLoadingReaders(true);
+    try {
+      const [rRes, aRes] = await Promise.all([
+        readerManteService.list(cfg.baseUrl, t, cfg.mockMode),
+        antenaManteService.list(cfg.baseUrl, t, cfg.mockMode),
+      ]);
+      if (rRes.codigo !== 1) addLog(`Error listando readers: ${rRes.mensaje}`, "error");
+      if (aRes.codigo !== 1) addLog(`Error listando antenas: ${aRes.mensaje}`, "error");
+      const mapped = mapToReaderConfigs(rRes.listareader ?? [], aRes.antenas ?? []);
+      setReaders(mapped);
+      setActiveReaderId((prev) =>
+        prev && mapped.some((r) => r.id === prev) ? prev : mapped[0]?.id ?? ""
+      );
+      addLog(
+        `${mapped.length} reader(s) cargados desde el mantenedor`,
+        mapped.length ? "success" : "info"
+      );
+    } catch (e: unknown) {
+      addLog(`Error cargando configuración: ${(e as Error).message}`, "error");
+    } finally {
+      setLoadingReaders(false);
+    }
+  }, [addLog]);
+
+  // Cargar al iniciar y cuando cambian token / modo / URL base.
+  useEffect(() => {
+    loadReaders();
+  }, [loadReaders, token, globalConfig.mockMode, globalConfig.baseUrl]);
 
   // ── Reader CRUD ──
 
