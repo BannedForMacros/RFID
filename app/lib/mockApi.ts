@@ -2,10 +2,21 @@
  * Mock API — simula el backend RFID para pruebas sin hardware real.
  * Reemplazar las llamadas de mockApi por las reales cuando la API esté disponible.
  */
-import type { Tag } from "../../types/rfid";
+import type { Tag, ReaderMante, AntenaMante } from "../../types/rfid";
 
 // ── Store en memoria por IP de reader ──
 const mockStore: Record<string, { tags: Tag[] }> = {};
+
+// ── Datos simulados de los mantenedores (solo modo simulación) ──
+const mockReaders: ReaderMante[] = [
+  { id: 1, ip: "192.168.10.1", descripcion: "Reader Almacén", estado: "1", fechacrea: "2026-01-01T00:00:00.000Z" },
+  { id: 2, ip: "192.168.10.2", descripcion: "Reader Despacho", estado: "1", fechacrea: "2026-01-01T00:00:00.000Z" },
+];
+const mockAntenas: AntenaMante[] = [
+  { id: 1, id_reader: 1, antena_number: 1, descripcion: "Puerta entrada", potencia: 80, estado: "1" },
+  { id: 2, id_reader: 1, antena_number: 2, descripcion: "Puerta salida", potencia: 75, estado: "1" },
+  { id: 3, id_reader: 2, antena_number: 1, descripcion: "Faja despacho", potencia: 90, estado: "1" },
+];
 
 function getStore(ip: string) {
   if (!mockStore[ip]) mockStore[ip] = { tags: [] };
@@ -88,5 +99,17 @@ export const mockApi = {
   async clearReadings(ip: string): Promise<void> {
     await delay(80);
     if (mockStore[ip]) mockStore[ip].tags = [];
+  },
+
+  /** Mantenedor de readers simulado (operación 3 — listar) */
+  async listReaders(): Promise<ReaderMante[]> {
+    await delay(120);
+    return mockReaders.map((r) => ({ ...r }));
+  },
+
+  /** Mantenedor de antenas simulado (operación 3 — listar) */
+  async listAntenas(): Promise<AntenaMante[]> {
+    await delay(120);
+    return mockAntenas.map((a) => ({ ...a }));
   },
 };

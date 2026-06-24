@@ -1,4 +1,5 @@
 import { API_ENDPOINTS, buildUrl, getHeaders } from "../config/api";
+import { mockApi } from "../lib/mockApi";
 import type { AntenaManteRequest, AntenaManteResponse } from "../../types/rfid";
 
 const EMPTY_RESPONSE: AntenaManteResponse = { codigo: 0, mensaje: "" };

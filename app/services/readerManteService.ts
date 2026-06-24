@@ -1,4 +1,5 @@
 import { API_ENDPOINTS, buildUrl, getHeaders } from "../config/api";
+import { mockApi } from "../lib/mockApi";
 import type { ReaderManteRequest, ReaderManteResponse } from "../../types/rfid";
 
 const EMPTY_RESPONSE: ReaderManteResponse = { codigo: 0, mensaje: "" };
@@ -38,8 +39,18 @@ export const readerManteService = {
   /**
    * Listar readers (op 3).
    * Si `ip` trae valor, filtra por esa IP; si va vacío devuelve todos.
+   * En modo simulación devuelve los readers de `mockApi`.
    */
-  async list(baseUrl: string, token: string, ip: string = ""): Promise<ReaderManteResponse> {
+  async list(
+    baseUrl: string,
+    token: string,
+    mockMode: boolean = false,
+    ip: string = ""
+  ): Promise<ReaderManteResponse> {
+    if (mockMode) {
+      const listareader = await mockApi.listReaders();
+      return { codigo: 1, mensaje: "OK (mock)", listareader };
+    }
     return readerFetch(
       buildUrl(baseUrl, API_ENDPOINTS.mantenedorReader),
       { id: 0, ip, descripcion: "", estado: "", id_ope: 3 },
