@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ClipboardList, Settings, Tag, CheckSquare, Radio } from "lucide-react";
+import { Activity, ClipboardList, Settings, Tag, CheckSquare, Radio, Server } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -18,6 +18,7 @@ interface NavbarProps {
 const NAV_ITEMS = [
   { href: "/rfid", label: "Lectura en Vivo", icon: Radio },
   { href: "/tags", label: "Mantenimiento", icon: Tag },
+  { href: "/mantenedor", label: "Mantenedor", icon: Server },
   { href: "/validation", label: "Validación", icon: CheckSquare },
 ];
 
