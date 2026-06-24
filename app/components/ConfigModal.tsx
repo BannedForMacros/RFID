@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Modal from "./Modal";
 import {
-  Monitor, Key, Globe, Plus, Trash2,
+  Monitor, Key, Globe, Server,
   CheckCircle, AlertCircle, Loader2,
   FlaskConical, ToggleLeft, ToggleRight, Radio, Zap,
 } from "lucide-react";
@@ -12,7 +12,6 @@ import type {
   ReaderConfig,
   ReaderRuntimeState,
   ReaderStatus,
-  AntennaConfig,
 } from "../../types/rfid";
 
 interface ConfigModalProps {
@@ -23,9 +22,10 @@ interface ConfigModalProps {
   readers: ReaderConfig[];
   readerStates: Record<string, ReaderRuntimeState>;
   onGenerateToken: () => void;
-  onAddReader: () => void;
-  onRemoveReader: (id: string) => void;
-  onUpdateReader: (id: string, updates: Partial<ReaderConfig>) => void;
+  // Gestión de readers/antenas movida al módulo Mantenedor (opcionales, ya no se usan aquí).
+  onAddReader?: () => void;
+  onRemoveReader?: (id: string) => void;
+  onUpdateReader?: (id: string, updates: Partial<ReaderConfig>) => void;
   onTestReader: (id: string) => Promise<{ ok: boolean; latencyMs: number }>;
   token: string;
 }
@@ -67,9 +67,6 @@ export const ConfigModal = ({
   readers,
   readerStates,
   onGenerateToken,
-  onAddReader,
-  onRemoveReader,
-  onUpdateReader,
   onTestReader,
   token,
 }: ConfigModalProps) => {
@@ -96,34 +93,6 @@ export const ConfigModal = ({
   const handleClose = () => {
     setTestResults({});
     onClose();
-  };
-
-  const addAntenna = (reader: ReaderConfig) => {
-    const next: AntennaConfig[] = [
-      ...reader.antenas,
-      {
-        numero: reader.antenas.length + 1,
-        nombre: `Antena ${reader.antenas.length + 1}`,
-        potencia: 20,
-      },
-    ];
-    onUpdateReader(reader.id, { antenas: next });
-  };
-
-  const removeAntenna = (reader: ReaderConfig, idx: number) => {
-    const next = reader.antenas
-      .filter((_, i) => i !== idx)
-      .map((a, i) => ({ ...a, numero: i + 1 }));
-    onUpdateReader(reader.id, { antenas: next });
-  };
-
-  const updateAntenna = (
-    reader: ReaderConfig,
-    idx: number,
-    patch: Partial<AntennaConfig>
-  ) => {
-    const next = reader.antenas.map((a, i) => (i === idx ? { ...a, ...patch } : a));
-    onUpdateReader(reader.id, { antenas: next });
   };
 
   return (
@@ -210,25 +179,24 @@ export const ConfigModal = ({
           )}
         </div>
 
-        {/* ── SECCIÓN READERS ── */}
+        {/* ── SECCIÓN READERS (solo lectura — se gestionan en el Mantenedor) ── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
               Readers ({readers.length})
             </h4>
-            <button
-              onClick={onAddReader}
-              className="flex items-center gap-1.5 bg-[#1e4786] text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-85 transition-opacity"
-            >
-              <Plus size={13} /> Agregar Reader
-            </button>
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
+              <Server size={13} /> Se administran en el Mantenedor
+            </span>
           </div>
 
           {readers.length === 0 && (
             <div className="text-center py-8 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">
               <Monitor size={28} className="mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No hay readers configurados</p>
-              <p className="text-xs mt-1">Haz clic en "Agregar Reader" para comenzar</p>
+              <p className="text-sm">No hay readers activos</p>
+              <p className="text-xs mt-1">
+                Regístralos en el módulo <span className="font-semibold">Mantenedor</span>
+              </p>
             </div>
           )}
 
@@ -237,7 +205,6 @@ export const ConfigModal = ({
             const status: ReaderStatus = state?.status ?? "disconnected";
             const isTesting   = testingIds.has(reader.id);
             const testResult  = testResults[reader.id];
-            const isConnected = status === "connected" || status === "reading";
             const isBusy      = status === "connecting" || status === "testing";
 
             return (
@@ -245,109 +212,48 @@ export const ConfigModal = ({
                 key={reader.id}
                 className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/50"
               >
-                {/* Fila 1: nombre, status badge, eliminar */}
+                {/* Fila 1: nombre + status */}
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${DOT_COLORS[status]}`} />
-                  <input
-                    className="flex-1 min-w-0 p-1.5 border border-slate-200 rounded-lg text-sm font-bold bg-white focus:border-[#1e4786] outline-none"
-                    value={reader.name}
-                    onChange={(e) => onUpdateReader(reader.id, { name: e.target.value })}
-                    placeholder="Nombre del reader (ej. Cuarto de servidores)"
-                  />
+                  <span className="flex-1 min-w-0 text-sm font-bold text-slate-700 truncate">
+                    {reader.name}
+                  </span>
                   <span
                     className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${STATUS_COLORS[status]}`}
                   >
                     {STATUS_LABEL[status]}
                   </span>
-                  <button
-                    onClick={() => onRemoveReader(reader.id)}
-                    disabled={isConnected || isBusy}
-                    className="p-1.5 text-slate-300 hover:text-red-500 disabled:opacity-30 transition-colors"
-                    title="Eliminar reader"
-                  >
-                    <Trash2 size={15} />
-                  </button>
                 </div>
 
                 {/* Fila 2: IP */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight flex items-center gap-1">
-                    <Monitor size={10} /> IP del Reader
-                  </label>
-                  <input
-                    className="w-full p-1.5 border border-slate-200 rounded-lg text-xs font-mono bg-white focus:border-[#22c4a1] outline-none"
-                    value={reader.ip}
-                    onChange={(e) => onUpdateReader(reader.id, { ip: e.target.value })}
-                    placeholder="192.168.10.1"
-                  />
+                <div className="flex items-center gap-1.5 text-xs">
+                  <Monitor size={11} className="text-slate-400" />
+                  <span className="font-mono text-slate-600">{reader.ip}</span>
                 </div>
 
-                {/* Antenas */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight flex items-center gap-1">
-                      <Radio size={10} /> Antenas ({reader.antenas.length})
-                    </span>
-                    <button
-                      onClick={() => addAntenna(reader)}
-                      className="flex items-center gap-1 text-[10px] font-bold text-[#1e4786] hover:text-[#22c4a1] transition-colors"
-                    >
-                      <Plus size={11} /> Agregar antena
-                    </button>
-                  </div>
-
-                  {reader.antenas.length === 0 && (
-                    <p className="text-[11px] text-slate-400 italic px-1">
-                      Sin antenas — agrega al menos una para conectar
-                    </p>
-                  )}
-
-                  <div className="space-y-1.5">
-                    {reader.antenas.map((ant, idx) => (
+                {/* Antenas (solo lectura) */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight flex items-center gap-1">
+                    <Radio size={10} /> Antenas ({reader.antenas.length})
+                  </span>
+                  {reader.antenas.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic px-1">Sin antenas activas</p>
+                  ) : (
+                    reader.antenas.map((ant) => (
                       <div
-                        key={idx}
-                        className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2"
+                        key={ant.numero}
+                        className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs"
                       >
-                        {/* Número */}
-                        <span className="text-[10px] font-bold text-slate-400 shrink-0 w-7 text-center">
+                        <span className="font-bold text-slate-400 shrink-0 w-7 text-center">
                           #{ant.numero}
                         </span>
-
-                        {/* Nombre / ubicación */}
-                        <input
-                          className="flex-1 min-w-0 p-1 text-xs border border-slate-200 rounded-md focus:border-[#22c4a1] outline-none bg-slate-50"
-                          value={ant.nombre}
-                          placeholder="Ubicación (ej. Puerta entrada)"
-                          onChange={(e) => updateAntenna(reader, idx, { nombre: e.target.value })}
-                        />
-
-                        {/* Potencia */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Zap size={10} className="text-slate-400" />
-                          <input
-                            type="number"
-                            className="w-14 p-1 text-xs font-mono border border-slate-200 rounded-md focus:border-[#22c4a1] outline-none bg-slate-50 text-center"
-                            value={ant.potencia}
-                            min={10}
-                            max={30}
-                            onChange={(e) =>
-                              updateAntenna(reader, idx, { potencia: Number(e.target.value) })
-                            }
-                          />
-                          <span className="text-[10px] text-slate-400">dBm</span>
-                        </div>
-
-                        {/* Eliminar antena */}
-                        <button
-                          onClick={() => removeAntenna(reader, idx)}
-                          className="p-1 text-slate-300 hover:text-red-500 transition-colors shrink-0"
-                          title="Eliminar antena"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                        <span className="flex-1 min-w-0 truncate text-slate-600">{ant.nombre}</span>
+                        <span className="flex items-center gap-1 shrink-0 text-slate-500 font-mono">
+                          <Zap size={10} className="text-slate-400" /> {ant.potencia}%
+                        </span>
                       </div>
-                    ))}
-                  </div>
+                    ))
+                  )}
                 </div>
 
                 {/* Acciones: solo test de comunicación */}

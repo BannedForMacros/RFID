@@ -397,7 +397,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       globalConfig, setGlobalConfig, token, setToken,
       logs, addLog, clearLogs,
-      readers, readerStates, activeReaderId, setActiveReaderId, activeAntennaNum, setActiveAntennaNum,
+      readers, loadingReaders, reloadReaders: loadReaders,
+      readerStates, activeReaderId, setActiveReaderId, activeAntennaNum, setActiveAntennaNum,
       activeState, activeReader, updateReaderState, setReaderStates,
       handleAddReader, handleRemoveReader, handleUpdateReader,
       handleConnect, handleDisconnect, handleTestReader, handleGenerateToken,

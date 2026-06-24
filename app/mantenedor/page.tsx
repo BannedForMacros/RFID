@@ -63,7 +63,7 @@ const EMPTY_ANTENA: AntenaForm = {
 export default function MantenedorPage() {
   const {
     globalConfig, setGlobalConfig, token, logs, addLog,
-    readers, readerStates,
+    readers, readerStates, reloadReaders,
     handleAddReader, handleRemoveReader, handleUpdateReader, handleTestReader, handleGenerateToken,
   } = useApp();
 
@@ -190,6 +190,7 @@ export default function MantenedorPage() {
         addLog(`Reader ${readerForm.ip} ${modalMode === "create" ? "registrado" : "actualizado"}`, "success");
         setModalMode(null);
         fetchReaders();
+        reloadReaders(); // refresca Lectura/Validación
       } else {
         addLog(`Error: ${res.mensaje}`, "error");
       }
@@ -232,6 +233,7 @@ export default function MantenedorPage() {
         addLog(`Antena ${antenaForm.num_antena} ${modalMode === "create" ? "registrada" : "actualizada"}`, "success");
         setModalMode(null);
         fetchAntenas();
+        reloadReaders(); // refresca Lectura/Validación
       } else {
         addLog(`Error: ${res.mensaje}`, "error");
       }
@@ -250,6 +252,7 @@ export default function MantenedorPage() {
       if (res.codigo === 1) {
         addLog(`Reader ${r.ip} eliminado`, "success");
         fetchReaders();
+        reloadReaders(); // refresca Lectura/Validación
       } else {
         addLog(`Error al eliminar: ${res.mensaje}`, "error");
       }
@@ -265,6 +268,7 @@ export default function MantenedorPage() {
       if (res.codigo === 1) {
         addLog(`Antena ${a.antena_number} eliminada`, "success");
         fetchAntenas();
+        reloadReaders(); // refresca Lectura/Validación
       } else {
         addLog(`Error al eliminar: ${res.mensaje}`, "error");
       }
