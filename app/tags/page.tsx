@@ -47,7 +47,7 @@ export default function TagsPage() {
   const {
     globalConfig, setGlobalConfig, token, setToken, logs, addLog,
     readers, readerStates,
-    handleAddReader, handleRemoveReader, handleUpdateReader, handleTestReader, handleGenerateToken,
+    handleTestReader, handleGenerateToken,
   } = useApp();
 
   const [tags, setTags] = useState<TagRegistro[]>([]);
@@ -595,9 +595,6 @@ export default function TagsPage() {
         readers={readers}
         readerStates={readerStates}
         onGenerateToken={handleGenerateToken}
-        onAddReader={handleAddReader}
-        onRemoveReader={handleRemoveReader}
-        onUpdateReader={handleUpdateReader}
         onTestReader={handleTestReader}
         token={token}
       />

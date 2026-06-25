@@ -25,10 +25,6 @@ const DEFAULT_READER_STATE: ReaderRuntimeState = {
   antenasState: {},
 };
 
-function genId() {
-  return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-}
-
 // ── Estado activo ──
 function isActivo(estado: string | undefined | null) {
   const e = String(estado ?? "").trim().toUpperCase();
@@ -88,9 +84,6 @@ interface AppContextValue {
   activeReader: ReaderConfig | undefined;
   updateReaderState: (id: string, updater: (prev: ReaderRuntimeState) => Partial<ReaderRuntimeState>) => void;
   setReaderStates: React.Dispatch<React.SetStateAction<Record<string, ReaderRuntimeState>>>;
-  handleAddReader: () => void;
-  handleRemoveReader: (id: string) => void;
-  handleUpdateReader: (id: string, updates: Partial<ReaderConfig>) => void;
   handleConnect: (readerId: string) => Promise<void>;
   handleDisconnect: (readerId: string) => Promise<void>;
   handleTestReader: (readerId: string) => Promise<{ ok: boolean; latencyMs: number }>;
@@ -193,36 +186,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadReaders();
   }, [loadReaders, token, globalConfig.mockMode, globalConfig.baseUrl]);
-
-  // ── Reader CRUD ──
-
-  const handleAddReader = useCallback(() => {
-    const id = genId();
-    const num = readersRef.current.length + 1;
-    setReaders((prev) => [
-      ...prev,
-      { id, name: `Reader ${num}`, ip: "192.168.10.1", antenas: [{ numero: 1, nombre: "Antena 1", potencia: 20 }] },
-    ]);
-    setActiveReaderId(id);
-    addLog(`Reader ${num} agregado`, "info");
-  }, [addLog]);
-
-  const handleRemoveReader = useCallback((id: string) => {
-    setReaders((prev) => prev.filter((r) => r.id !== id));
-    setReaderStates((prev) => { const next = { ...prev }; delete next[id]; return next; });
-    setActiveReaderId((cur) => {
-      if (cur === id) {
-        const remaining = readersRef.current.filter((r) => r.id !== id);
-        return remaining[0]?.id ?? "";
-      }
-      return cur;
-    });
-    addLog("Reader eliminado", "info");
-  }, [addLog]);
-
-  const handleUpdateReader = useCallback((id: string, updates: Partial<ReaderConfig>) => {
-    setReaders((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
-  }, []);
 
   // ── Connect / Disconnect ──
 
@@ -400,7 +363,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       readers, loadingReaders, reloadReaders: loadReaders,
       readerStates, activeReaderId, setActiveReaderId, activeAntennaNum, setActiveAntennaNum,
       activeState, activeReader, updateReaderState, setReaderStates,
-      handleAddReader, handleRemoveReader, handleUpdateReader,
       handleConnect, handleDisconnect, handleTestReader, handleGenerateToken,
       polling, startPolling, stopPolling,
       readersRef, readerStatesRef, globalConfigRef, tokenRef,

@@ -22,10 +22,7 @@ interface ConfigModalProps {
   readers: ReaderConfig[];
   readerStates: Record<string, ReaderRuntimeState>;
   onGenerateToken: () => void;
-  // Gestión de readers/antenas movida al módulo Mantenedor (opcionales, ya no se usan aquí).
-  onAddReader?: () => void;
-  onRemoveReader?: (id: string) => void;
-  onUpdateReader?: (id: string, updates: Partial<ReaderConfig>) => void;
+  // La gestión de readers/antenas vive en el módulo Mantenedor.
   onTestReader: (id: string) => Promise<{ ok: boolean; latencyMs: number }>;
   token: string;
 }

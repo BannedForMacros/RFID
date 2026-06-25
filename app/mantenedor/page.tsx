@@ -64,7 +64,7 @@ export default function MantenedorPage() {
   const {
     globalConfig, setGlobalConfig, token, logs, addLog,
     readers, readerStates, reloadReaders,
-    handleAddReader, handleRemoveReader, handleUpdateReader, handleTestReader, handleGenerateToken,
+    handleTestReader, handleGenerateToken,
   } = useApp();
 
   const [tab, setTab] = useState<SubTab>("readers");
@@ -668,9 +668,6 @@ export default function MantenedorPage() {
         readers={readers}
         readerStates={readerStates}
         onGenerateToken={handleGenerateToken}
-        onAddReader={handleAddReader}
-        onRemoveReader={handleRemoveReader}
-        onUpdateReader={handleUpdateReader}
         onTestReader={handleTestReader}
         token={token}
       />

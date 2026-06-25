@@ -27,7 +27,6 @@ export default function RFIDMonitor() {
     activeAntennaNum, setActiveAntennaNum, activeState, activeReader,
     readersRef, readerStatesRef, globalConfigRef, tokenRef,
     updateReaderState,
-    handleAddReader, handleRemoveReader, handleUpdateReader,
     handleConnect, handleDisconnect, handleTestReader, handleGenerateToken,
     polling, startPolling, stopPolling,
   } = useApp();
@@ -202,9 +201,6 @@ export default function RFIDMonitor() {
         readers={readers}
         readerStates={readerStates}
         onGenerateToken={handleGenerateToken}
-        onAddReader={handleAddReader}
-        onRemoveReader={handleRemoveReader}
-        onUpdateReader={handleUpdateReader}
         onTestReader={handleTestReader}
         token={token}
       />
