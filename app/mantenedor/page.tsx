@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Server,
   Antenna,
@@ -12,6 +12,8 @@ import {
   Save,
   RefreshCw,
   AlertCircle,
+  CheckCircle,
+  X,
 } from "lucide-react";
 
 import { Navbar } from "../components/rfid/Navbar";
@@ -85,6 +87,23 @@ export default function MantenedorPage() {
 
   const mock = globalConfig.mockMode;
 
+  // ── Toast visible (además del log) ──
+  type ToastType = "success" | "error" | "info";
+  const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // notify = muestra el mensaje en pantalla (toast) Y lo guarda en el log.
+  const notify = useCallback(
+    (msg: string, type: ToastType = "info") => {
+      addLog(msg, type);
+      setToast({ msg, type });
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast(null), 6000);
+    },
+    [addLog]
+  );
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+
   // ── Carga de datos ──
   const fetchReaders = useCallback(async () => {
     setLoading(true);
@@ -92,16 +111,16 @@ export default function MantenedorPage() {
       const res = await readerManteService.list(globalConfig.baseUrl, token, mock);
       if (res.codigo === 1) {
         setReaderList(res.listareader ?? []);
-        addLog(`${res.listareader?.length ?? 0} reader(s) cargados`, "success");
+        notify(`${res.listareader?.length ?? 0} reader(s) cargados`, "success");
       } else {
-        addLog(`Error al listar readers: ${res.mensaje}`, "error");
+        notify(`Error al listar readers: ${res.mensaje}`, "error");
       }
     } catch (e: unknown) {
-      addLog(`Error cargando readers: ${(e as Error).message}`, "error");
+      notify(`Error cargando readers: ${(e as Error).message}`, "error");
     } finally {
       setLoading(false);
     }
-  }, [mock, globalConfig.baseUrl, token, addLog]);
+  }, [mock, globalConfig.baseUrl, token, notify]);
 
   const fetchAntenas = useCallback(async () => {
     setLoading(true);
@@ -109,26 +128,25 @@ export default function MantenedorPage() {
       const res = await antenaManteService.list(globalConfig.baseUrl, token, mock);
       if (res.codigo === 1) {
         setAntenaList(res.antenas ?? []);
-        addLog(`${res.antenas?.length ?? 0} antena(s) cargadas`, "success");
+        notify(`${res.antenas?.length ?? 0} antena(s) cargadas`, "success");
       } else {
-        addLog(`Error al listar antenas: ${res.mensaje}`, "error");
+        notify(`Error al listar antenas: ${res.mensaje}`, "error");
       }
     } catch (e: unknown) {
-      addLog(`Error cargando antenas: ${(e as Error).message}`, "error");
+      notify(`Error cargando antenas: ${(e as Error).message}`, "error");
     } finally {
       setLoading(false);
     }
-  }, [mock, globalConfig.baseUrl, token, addLog]);
+  }, [mock, globalConfig.baseUrl, token, notify]);
 
   const refresh = useCallback(() => {
     if (tab === "readers") fetchReaders();
     else fetchAntenas();
   }, [tab, fetchReaders, fetchAntenas]);
 
-  // Los readers se cargan SIEMPRE: la pestaña Readers los lista y el modal de
-  // Antenas los necesita para el select (no dejamos escribir la IP a mano).
+  // Los readers se cargan SIEMPRE al entrar (el listado no requiere token).
+  // La pestaña Readers los lista y el modal de Antenas los necesita para el select.
   useEffect(() => {
-    if (!mock && !token) return; // el modo real requiere token
     fetchReaders();
     if (tab === "antenas") fetchAntenas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -168,7 +186,7 @@ export default function MantenedorPage() {
   // ── Guardar ──
   const handleSaveReader = async () => {
     if (!readerForm.ip.trim()) {
-      addLog("La IP del reader es obligatoria", "error");
+      notify("La IP del reader es obligatoria", "error");
       return;
     }
     setSaving(true);
@@ -187,15 +205,19 @@ export default function MantenedorPage() {
               estado: readerForm.estado,
             });
       if (res.codigo === 1) {
-        addLog(`Reader ${readerForm.ip} ${modalMode === "create" ? "registrado" : "actualizado"}`, "success");
+        notify(
+          `Reader ${readerForm.ip} ${modalMode === "create" ? "registrado" : "actualizado"}` +
+            (res.mensaje ? ` — ${res.mensaje}` : ""),
+          "success"
+        );
         setModalMode(null);
         fetchReaders();
         reloadReaders(); // refresca Lectura/Validación
       } else {
-        addLog(`Error: ${res.mensaje}`, "error");
+        notify(`Error: ${res.mensaje}`, "error");
       }
     } catch (e: unknown) {
-      addLog(`Error: ${(e as Error).message}`, "error");
+      notify(`Error: ${(e as Error).message}`, "error");
     } finally {
       setSaving(false);
     }
@@ -203,11 +225,11 @@ export default function MantenedorPage() {
 
   const handleSaveAntena = async () => {
     if (!antenaForm.ip_reader.trim()) {
-      addLog("La IP del reader es obligatoria", "error");
+      notify("La IP del reader es obligatoria", "error");
       return;
     }
     if (antenaForm.potencia < 0 || antenaForm.potencia > 100) {
-      addLog("La potencia debe estar entre 0 y 100 %", "error");
+      notify("La potencia debe estar entre 0 y 100 %", "error");
       return;
     }
     setSaving(true);
@@ -230,15 +252,19 @@ export default function MantenedorPage() {
               estado: antenaForm.estado,
             });
       if (res.codigo === 1) {
-        addLog(`Antena ${antenaForm.num_antena} ${modalMode === "create" ? "registrada" : "actualizada"}`, "success");
+        notify(
+          `Antena ${antenaForm.num_antena} ${modalMode === "create" ? "registrada" : "actualizada"}` +
+            (res.mensaje ? ` — ${res.mensaje}` : ""),
+          "success"
+        );
         setModalMode(null);
         fetchAntenas();
         reloadReaders(); // refresca Lectura/Validación
       } else {
-        addLog(`Error: ${res.mensaje}`, "error");
+        notify(`Error: ${res.mensaje}`, "error");
       }
     } catch (e: unknown) {
-      addLog(`Error: ${(e as Error).message}`, "error");
+      notify(`Error: ${(e as Error).message}`, "error");
     } finally {
       setSaving(false);
     }
@@ -250,14 +276,14 @@ export default function MantenedorPage() {
     try {
       const res = await readerManteService.remove(globalConfig.baseUrl, token, r.ip);
       if (res.codigo === 1) {
-        addLog(`Reader ${r.ip} eliminado`, "success");
+        notify(`Reader ${r.ip} eliminado`, "success");
         fetchReaders();
         reloadReaders(); // refresca Lectura/Validación
       } else {
-        addLog(`Error al eliminar: ${res.mensaje}`, "error");
+        notify(`Error al eliminar: ${res.mensaje}`, "error");
       }
     } catch (e: unknown) {
-      addLog(`Error: ${(e as Error).message}`, "error");
+      notify(`Error: ${(e as Error).message}`, "error");
     }
   };
 
@@ -266,14 +292,14 @@ export default function MantenedorPage() {
     try {
       const res = await antenaManteService.remove(globalConfig.baseUrl, token, a.id);
       if (res.codigo === 1) {
-        addLog(`Antena ${a.antena_number} eliminada`, "success");
+        notify(`Antena ${a.antena_number} eliminada`, "success");
         fetchAntenas();
         reloadReaders(); // refresca Lectura/Validación
       } else {
-        addLog(`Error al eliminar: ${res.mensaje}`, "error");
+        notify(`Error al eliminar: ${res.mensaje}`, "error");
       }
     } catch (e: unknown) {
-      addLog(`Error: ${(e as Error).message}`, "error");
+      notify(`Error: ${(e as Error).message}`, "error");
     }
   };
 
@@ -514,6 +540,35 @@ export default function MantenedorPage() {
           )}
         </div>
       </main>
+
+      {/* Toast visible — muestra el mensaje de la API */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[200] max-w-md animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div
+            className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-semibold ${
+              toast.type === "success"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                : toast.type === "error"
+                ? "bg-red-50 border-red-200 text-red-700"
+                : "bg-slate-50 border-slate-200 text-slate-700"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle size={18} className="shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle size={18} className="shrink-0 mt-0.5" />
+            )}
+            <span className="flex-1 break-words">{toast.msg}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+              title="Cerrar"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal Reader */}
       <Modal

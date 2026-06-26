@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
+import { DEFAULT_BASE_URL } from "../config/api";
 import { rfidService } from "../services/rfidService";
 import { readerManteService } from "../services/readerManteService";
 import { antenaManteService } from "../services/antenaManteService";
@@ -106,9 +107,9 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   // ── Global config ──
   const [globalConfig, setGlobalConfig] = useState<GlobalConfig>({
-    baseUrl: "https://abc123.ngrok.io",
+    baseUrl: DEFAULT_BASE_URL, // viene de NEXT_PUBLIC_API_BASE_URL (.env.local)
     dias: 1,
-    mockMode: true,
+    mockMode: false, // hay API real disponible
   });
   const [token, setToken] = useState("");
 
@@ -156,8 +157,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const loadReaders = useCallback(async () => {
     const cfg = globalConfigRef.current;
     const t = tokenRef.current;
-    // En modo real se necesita token; en simulación la data viene del mock.
-    if (!cfg.mockMode && !t) return;
+    // El listado de los mantenedores no requiere token, así que cargamos siempre.
     setLoadingReaders(true);
     try {
       const [rRes, aRes] = await Promise.all([
