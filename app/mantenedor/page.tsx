@@ -14,6 +14,9 @@ import {
   AlertCircle,
   CheckCircle,
   X,
+  ChevronDown,
+  ChevronRight,
+  Zap,
 } from "lucide-react";
 
 import { Navbar } from "../components/rfid/Navbar";
@@ -23,10 +26,11 @@ import Modal from "../components/Modal";
 import { useApp } from "../context/AppContext";
 import { readerManteService } from "../services/readerManteService";
 import { antenaManteService } from "../services/antenaManteService";
+import { confirmDelete } from "../lib/alerts";
 import type { ReaderMante, AntenaMante } from "../../types/rfid";
 
-type SubTab = "readers" | "antenas";
 type ModalMode = "create" | "edit" | null;
+type ToastType = "success" | "error" | "info";
 
 const estadoLabel = (estado: string) => {
   if (estado === "1" || estado === "A")
@@ -69,18 +73,18 @@ export default function MantenedorPage() {
     handleTestReader, handleGenerateToken,
   } = useApp();
 
-  const [tab, setTab] = useState<SubTab>("readers");
-
   // Datos
   const [readerList, setReaderList] = useState<ReaderMante[]>([]);
   const [antenaList, setAntenaList] = useState<AntenaMante[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<Set<number>>(new Set()); // readers desplegados
 
   // Modales
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<ModalMode>(null);
+  const [readerModal, setReaderModal] = useState<ModalMode>(null);
+  const [antenaModal, setAntenaModal] = useState<ModalMode>(null);
   const [readerForm, setReaderForm] = useState<ReaderForm>(EMPTY_READER);
   const [antenaForm, setAntenaForm] = useState<AntenaForm>(EMPTY_ANTENA);
   const [saving, setSaving] = useState(false);
@@ -88,11 +92,8 @@ export default function MantenedorPage() {
   const mock = globalConfig.mockMode;
 
   // ── Toast visible (además del log) ──
-  type ToastType = "success" | "error" | "info";
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // notify = muestra el mensaje en pantalla (toast) Y lo guarda en el log.
   const notify = useCallback(
     (msg: string, type: ToastType = "info") => {
       addLog(msg, type);
@@ -104,86 +105,74 @@ export default function MantenedorPage() {
   );
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
-  // ── Carga de datos ──
-  const fetchReaders = useCallback(async () => {
+  // ── Carga (readers + antenas en una sola pasada) ──
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await readerManteService.list(globalConfig.baseUrl, token, mock);
-      if (res.codigo === 1) {
-        setReaderList(res.listareader ?? []);
-        notify(`${res.listareader?.length ?? 0} reader(s) cargados`, "success");
-      } else {
-        notify(`Error al listar readers: ${res.mensaje}`, "error");
-      }
+      const [rRes, aRes] = await Promise.all([
+        readerManteService.list(globalConfig.baseUrl, token, mock),
+        antenaManteService.list(globalConfig.baseUrl, token, mock),
+      ]);
+      if (rRes.codigo === 1) setReaderList(rRes.listareader ?? []);
+      else notify(`Error al listar readers: ${rRes.mensaje}`, "error");
+      if (aRes.codigo === 1) setAntenaList(aRes.antenas ?? []);
+      else notify(`Error al listar antenas: ${aRes.mensaje}`, "error");
     } catch (e: unknown) {
-      notify(`Error cargando readers: ${(e as Error).message}`, "error");
+      notify(`Error cargando datos: ${(e as Error).message}`, "error");
     } finally {
       setLoading(false);
     }
-  }, [mock, globalConfig.baseUrl, token, notify]);
+  }, [globalConfig.baseUrl, token, mock, notify]);
 
-  const fetchAntenas = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await antenaManteService.list(globalConfig.baseUrl, token, mock);
-      if (res.codigo === 1) {
-        setAntenaList(res.antenas ?? []);
-        notify(`${res.antenas?.length ?? 0} antena(s) cargadas`, "success");
-      } else {
-        notify(`Error al listar antenas: ${res.mensaje}`, "error");
-      }
-    } catch (e: unknown) {
-      notify(`Error cargando antenas: ${(e as Error).message}`, "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [mock, globalConfig.baseUrl, token, notify]);
-
-  const refresh = useCallback(() => {
-    if (tab === "readers") fetchReaders();
-    else fetchAntenas();
-  }, [tab, fetchReaders, fetchAntenas]);
-
-  // Los readers se cargan SIEMPRE al entrar (el listado no requiere token).
-  // La pestaña Readers los lista y el modal de Antenas los necesita para el select.
   useEffect(() => {
-    fetchReaders();
-    if (tab === "antenas") fetchAntenas();
+    fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, mock, tab]);
+  }, [token, mock]);
+
+  // ── Helpers ──
+  const readerById = (id: number) => readerList.find((r) => r.id === id);
+  const antenasOf = (readerId: number) =>
+    antenaList
+      .filter((a) => a.id_reader === readerId)
+      .sort((a, b) => a.antena_number - b.antena_number);
+  const toggle = (id: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // ── Abrir modales ──
-  const openCreate = () => {
-    if (tab === "readers") {
-      setReaderForm(EMPTY_READER);
-    } else {
-      // Preseleccionamos el primer reader disponible para minimizar el esfuerzo.
-      setAntenaForm({ ...EMPTY_ANTENA, ip_reader: readerList[0]?.ip ?? "" });
-    }
-    setModalMode("create");
+  const openCreateReader = () => {
+    setReaderForm(EMPTY_READER);
+    setReaderModal("create");
   };
-
   const openEditReader = (r: ReaderMante) => {
     setReaderForm({ id: r.id, ip: r.ip, descripcion: r.descripcion, estado: r.estado });
-    setModalMode("edit");
+    setReaderModal("edit");
   };
-
+  const openCreateAntena = (r: ReaderMante) => {
+    // El reader ya está fijado (no se elige a mano). Sugerimos el siguiente N° libre.
+    const nums = antenasOf(r.id).map((a) => a.antena_number);
+    const next = nums.length ? Math.max(...nums) + 1 : 1;
+    setAntenaForm({ ...EMPTY_ANTENA, ip_reader: r.ip, num_antena: next });
+    setAntenaModal("create");
+  };
   const openEditAntena = (a: AntenaMante) => {
-    // El response trae id_reader (numérico), no la IP. La resolvemos contra la
-    // lista de readers para dejar el select correctamente preseleccionado.
-    const matched = readerList.find((r) => r.id === a.id_reader);
+    const r = readerById(a.id_reader);
     setAntenaForm({
       id_antena: a.id,
-      ip_reader: matched?.ip ?? "",
+      ip_reader: r?.ip ?? "",
       num_antena: a.antena_number,
       descripcion: a.descripcion,
       potencia: a.potencia,
       estado: a.estado,
     });
-    setModalMode("edit");
+    setAntenaModal("edit");
   };
 
-  // ── Guardar ──
+  // ── Guardar reader ──
   const handleSaveReader = async () => {
     if (!readerForm.ip.trim()) {
       notify("La IP del reader es obligatoria", "error");
@@ -192,7 +181,7 @@ export default function MantenedorPage() {
     setSaving(true);
     try {
       const res =
-        modalMode === "create"
+        readerModal === "create"
           ? await readerManteService.insert(globalConfig.baseUrl, token, {
               ip: readerForm.ip.trim(),
               descripcion: readerForm.descripcion,
@@ -206,12 +195,12 @@ export default function MantenedorPage() {
             });
       if (res.codigo === 1) {
         notify(
-          `Reader ${readerForm.ip} ${modalMode === "create" ? "registrado" : "actualizado"}` +
+          `Reader ${readerForm.ip} ${readerModal === "create" ? "registrado" : "actualizado"}` +
             (res.mensaje ? ` — ${res.mensaje}` : ""),
           "success"
         );
-        setModalMode(null);
-        fetchReaders();
+        setReaderModal(null);
+        fetchAll();
         reloadReaders(); // refresca Lectura/Validación
       } else {
         notify(`Error: ${res.mensaje}`, "error");
@@ -223,9 +212,10 @@ export default function MantenedorPage() {
     }
   };
 
+  // ── Guardar antena ──
   const handleSaveAntena = async () => {
     if (!antenaForm.ip_reader.trim()) {
-      notify("La IP del reader es obligatoria", "error");
+      notify("La antena debe pertenecer a un reader", "error");
       return;
     }
     if (antenaForm.potencia < 0 || antenaForm.potencia > 100) {
@@ -235,7 +225,7 @@ export default function MantenedorPage() {
     setSaving(true);
     try {
       const res =
-        modalMode === "create"
+        antenaModal === "create"
           ? await antenaManteService.insert(globalConfig.baseUrl, token, {
               ip_reader: antenaForm.ip_reader.trim(),
               num_antena: antenaForm.num_antena,
@@ -253,12 +243,15 @@ export default function MantenedorPage() {
             });
       if (res.codigo === 1) {
         notify(
-          `Antena ${antenaForm.num_antena} ${modalMode === "create" ? "registrada" : "actualizada"}` +
+          `Antena ${antenaForm.num_antena} ${antenaModal === "create" ? "registrada" : "actualizada"}` +
             (res.mensaje ? ` — ${res.mensaje}` : ""),
           "success"
         );
-        setModalMode(null);
-        fetchAntenas();
+        setAntenaModal(null);
+        // Mantener desplegado el reader de esta antena para ver el cambio.
+        const r = readerList.find((x) => x.ip === antenaForm.ip_reader);
+        if (r) setExpanded((prev) => new Set(prev).add(r.id));
+        fetchAll();
         reloadReaders(); // refresca Lectura/Validación
       } else {
         notify(`Error: ${res.mensaje}`, "error");
@@ -272,13 +265,18 @@ export default function MantenedorPage() {
 
   // ── Eliminar ──
   const handleDeleteReader = async (r: ReaderMante) => {
-    if (!window.confirm(`¿Eliminar el reader ${r.ip}?`)) return;
+    const ok = await confirmDelete({
+      title: "Eliminar reader",
+      text: `Se eliminará el reader ${r.ip} y todas sus antenas. Esta acción no se puede deshacer.`,
+      confirmText: "Sí, eliminar",
+    });
+    if (!ok) return;
     try {
       const res = await readerManteService.remove(globalConfig.baseUrl, token, r.ip);
       if (res.codigo === 1) {
         notify(`Reader ${r.ip} eliminado`, "success");
-        fetchReaders();
-        reloadReaders(); // refresca Lectura/Validación
+        fetchAll();
+        reloadReaders();
       } else {
         notify(`Error al eliminar: ${res.mensaje}`, "error");
       }
@@ -288,13 +286,18 @@ export default function MantenedorPage() {
   };
 
   const handleDeleteAntena = async (a: AntenaMante) => {
-    if (!window.confirm(`¿Eliminar la antena ${a.antena_number} (id ${a.id})?`)) return;
+    const ok = await confirmDelete({
+      title: "Eliminar antena",
+      text: `Se eliminará la antena N° ${a.antena_number}. Esta acción no se puede deshacer.`,
+      confirmText: "Sí, eliminar",
+    });
+    if (!ok) return;
     try {
       const res = await antenaManteService.remove(globalConfig.baseUrl, token, a.id);
       if (res.codigo === 1) {
         notify(`Antena ${a.antena_number} eliminada`, "success");
-        fetchAntenas();
-        reloadReaders(); // refresca Lectura/Validación
+        fetchAll();
+        reloadReaders();
       } else {
         notify(`Error al eliminar: ${res.mensaje}`, "error");
       }
@@ -303,20 +306,11 @@ export default function MantenedorPage() {
     }
   };
 
-  // ── Filtros ──
+  // ── Filtro de readers ──
   const q = search.toLowerCase();
   const filteredReaders = readerList.filter(
     (r) => r.ip.toLowerCase().includes(q) || (r.descripcion ?? "").toLowerCase().includes(q)
   );
-  const filteredAntenas = antenaList.filter(
-    (a) =>
-      String(a.antena_number).includes(q) ||
-      (a.descripcion ?? "").toLowerCase().includes(q) ||
-      String(a.id_reader).includes(q)
-  );
-
-  const count = tab === "readers" ? readerList.length : antenaList.length;
-  const filteredCount = tab === "readers" ? filteredReaders.length : filteredAntenas.length;
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a]">
@@ -328,7 +322,7 @@ export default function MantenedorPage() {
         onOpenConfig={() => setIsConfigOpen(true)}
       />
 
-      <main className="max-w-7xl mx-auto p-6 lg:p-8 space-y-6">
+      <main className="max-w-5xl mx-auto p-6 lg:p-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -336,45 +330,25 @@ export default function MantenedorPage() {
               <Server size={24} /> Mantenedor
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              Administra los readers y sus antenas registrados en el sistema
+              {readerList.length} reader(s) · {antenaList.length} antena(s) — despliega un reader para ver sus antenas
             </p>
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={refresh}
-              disabled={loading || mock}
+              onClick={fetchAll}
+              disabled={loading}
               className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-50 disabled:opacity-40 transition-all"
             >
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refrescar
             </button>
             <button
-              onClick={openCreate}
+              onClick={openCreateReader}
               disabled={mock}
               className="flex items-center gap-1.5 bg-[#22c4a1] text-white px-4 py-2 rounded-lg text-sm font-bold hover:brightness-105 disabled:opacity-50 transition-all"
             >
-              <Plus size={16} /> {tab === "readers" ? "Nuevo Reader" : "Nueva Antena"}
+              <Plus size={16} /> Nuevo Reader
             </button>
           </div>
-        </div>
-
-        {/* Sub-tabs */}
-        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 w-fit shadow-sm">
-          {([
-            { key: "readers", label: "Readers", icon: Server },
-            { key: "antenas", label: "Antenas", icon: Antenna },
-          ] as const).map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => { setTab(key); setSearch(""); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                tab === key
-                  ? "bg-[#1e4786] text-white shadow"
-                  : "text-slate-500 hover:bg-slate-50"
-              }`}
-            >
-              <Icon size={16} /> {label}
-            </button>
-          ))}
         </div>
 
         {/* Mock mode warning */}
@@ -384,7 +358,7 @@ export default function MantenedorPage() {
             <div>
               <p className="text-sm font-bold text-amber-800">Modo Simulación</p>
               <p className="text-xs text-amber-600">
-                El mantenedor requiere conexión a la API real. Desactiva el modo simulación en Configuración.
+                Estás viendo datos simulados. Desactiva el modo simulación en Configuración para operar contra la API real.
               </p>
             </div>
           </div>
@@ -395,148 +369,159 @@ export default function MantenedorPage() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:border-[#22c4a1] outline-none transition-all bg-white"
-            placeholder={tab === "readers" ? "Buscar por IP o descripción..." : "Buscar por N° antena, descripción o id reader..."}
+            placeholder="Buscar reader por IP o descripción..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
-        {/* Tabla */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            {tab === "readers" ? (
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="text-[11px] uppercase tracking-widest text-slate-400 font-bold bg-slate-50/80">
-                    <th className="px-6 py-4">#</th>
-                    <th className="px-6 py-4">ID</th>
-                    <th className="px-6 py-4">IP</th>
-                    <th className="px-6 py-4">Descripción</th>
-                    <th className="px-6 py-4 text-center">Estado</th>
-                    <th className="px-6 py-4 text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {loading ? (
-                    <LoadingRow cols={6} label="Cargando readers..." />
-                  ) : filteredReaders.length === 0 ? (
-                    <EmptyRow cols={6} icon={<Server size={40} />} empty={readerList.length === 0} />
-                  ) : (
-                    filteredReaders.map((r, idx) => {
-                      const est = estadoLabel(r.estado);
-                      return (
-                        <tr key={r.id} className="group hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4 text-xs font-mono text-slate-400">{idx + 1}</td>
-                          <td className="px-6 py-4 text-sm font-mono text-slate-500">{r.id}</td>
-                          <td className="px-6 py-4">
-                            <span className="font-mono font-bold text-sm text-[#1e4786]">{r.ip}</span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 max-w-[260px] truncate">
-                            {r.descripcion || "—"}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold border ${est.cls}`}>
-                              {est.text}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => openEditReader(r)}
-                                className="p-2 text-slate-400 hover:text-[#1e4786] hover:bg-slate-100 rounded-lg transition-colors"
-                                title="Editar"
-                              >
-                                <Edit3 size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteReader(r)}
-                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Eliminar"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            ) : (
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="text-[11px] uppercase tracking-widest text-slate-400 font-bold bg-slate-50/80">
-                    <th className="px-6 py-4">#</th>
-                    <th className="px-6 py-4">ID</th>
-                    <th className="px-6 py-4">ID Reader</th>
-                    <th className="px-6 py-4">N° Antena</th>
-                    <th className="px-6 py-4">Descripción</th>
-                    <th className="px-6 py-4 text-center">Potencia</th>
-                    <th className="px-6 py-4 text-center">Estado</th>
-                    <th className="px-6 py-4 text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {loading ? (
-                    <LoadingRow cols={8} label="Cargando antenas..." />
-                  ) : filteredAntenas.length === 0 ? (
-                    <EmptyRow cols={8} icon={<Antenna size={40} />} empty={antenaList.length === 0} />
-                  ) : (
-                    filteredAntenas.map((a, idx) => {
-                      const est = estadoLabel(a.estado);
-                      return (
-                        <tr key={a.id} className="group hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4 text-xs font-mono text-slate-400">{idx + 1}</td>
-                          <td className="px-6 py-4 text-sm font-mono text-slate-500">{a.id}</td>
-                          <td className="px-6 py-4 text-sm font-mono text-slate-500">{a.id_reader}</td>
-                          <td className="px-6 py-4">
-                            <span className="font-mono font-bold text-sm text-[#1e4786]">{a.antena_number}</span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 max-w-[220px] truncate">
-                            {a.descripcion || "—"}
-                          </td>
-                          <td className="px-6 py-4 text-center text-sm font-mono text-slate-600">
-                            {a.potencia}%
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold border ${est.cls}`}>
-                              {est.text}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => openEditAntena(a)}
-                                className="p-2 text-slate-400 hover:text-[#1e4786] hover:bg-slate-100 rounded-lg transition-colors"
-                                title="Editar"
-                              >
-                                <Edit3 size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteAntena(a)}
-                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Eliminar"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {!loading && filteredCount > 0 && (
-            <div className="px-6 py-3 bg-slate-50/50 border-t border-slate-100">
-              <span className="text-[11px] text-slate-400 font-mono">
-                {filteredCount} de {count} {tab === "readers" ? "reader(s)" : "antena(s)"}
-              </span>
+        {/* Lista de readers (acordeón) */}
+        <div className="space-y-3">
+          {loading && readerList.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 py-20 text-center">
+              <Loader2 size={32} className="animate-spin text-[#22c4a1] mx-auto" />
+              <p className="text-sm text-slate-400 mt-2">Cargando...</p>
             </div>
+          ) : filteredReaders.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 py-20 text-center text-slate-400">
+              <div className="flex flex-col items-center gap-2 opacity-40">
+                <Server size={40} />
+                <p className="font-medium">
+                  {readerList.length === 0 ? "No hay readers registrados" : "No se encontraron resultados"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            filteredReaders.map((r) => {
+              const isOpen = expanded.has(r.id);
+              const ants = antenasOf(r.id);
+              const est = estadoLabel(r.estado);
+              return (
+                <div
+                  key={r.id}
+                  className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+                >
+                  {/* Cabecera del reader */}
+                  <div className="flex items-center gap-3 px-4 py-3.5">
+                    <button
+                      onClick={() => toggle(r.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-[#1e4786] transition-colors shrink-0"
+                      title={isOpen ? "Contraer" : "Ver antenas"}
+                    >
+                      {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    </button>
+
+                    <button
+                      onClick={() => toggle(r.id)}
+                      className="flex-1 flex items-center gap-3 text-left min-w-0"
+                    >
+                      <div className="bg-[#1e4786]/10 p-2 rounded-xl shrink-0">
+                        <Server size={18} className="text-[#1e4786]" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-mono font-bold text-sm text-[#1e4786]">{r.ip}</div>
+                        <div className="text-xs text-slate-400 truncate">
+                          {r.descripcion || "Sin descripción"}
+                        </div>
+                      </div>
+                    </button>
+
+                    <span className="hidden sm:flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full shrink-0">
+                      <Antenna size={12} /> {ants.length}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${est.cls}`}
+                    >
+                      {est.text}
+                    </span>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => openEditReader(r)}
+                        className="p-2 text-slate-400 hover:text-[#1e4786] hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Editar reader"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteReader(r)}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Eliminar reader"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Panel de antenas (desplegable) */}
+                  {isOpen && (
+                    <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-3.5">
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                          <Antenna size={12} /> Antenas de este reader
+                        </span>
+                        <button
+                          onClick={() => openCreateAntena(r)}
+                          disabled={mock}
+                          className="flex items-center gap-1 text-[11px] font-bold text-[#1e4786] hover:text-[#22c4a1] disabled:opacity-40 transition-colors"
+                        >
+                          <Plus size={13} /> Nueva antena
+                        </button>
+                      </div>
+
+                      {ants.length === 0 ? (
+                        <p className="text-[12px] text-slate-400 italic py-3 text-center">
+                          Este reader no tiene antenas. Agrégalas con el botón “Nueva antena”.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {ants.map((a) => {
+                            const aEst = estadoLabel(a.estado);
+                            return (
+                              <div
+                                key={a.id}
+                                className="flex items-center gap-3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                              >
+                                <span className="font-mono font-bold text-[#1e4786] shrink-0 w-9 text-center">
+                                  #{a.antena_number}
+                                </span>
+                                <span className="flex-1 min-w-0 truncate text-slate-600">
+                                  {a.descripcion || "—"}
+                                </span>
+                                <span className="flex items-center gap-1 shrink-0 text-slate-500 font-mono text-xs">
+                                  <Zap size={11} className="text-slate-400" /> {a.potencia}%
+                                </span>
+                                <span
+                                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${aEst.cls}`}
+                                >
+                                  {aEst.text}
+                                </span>
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  <button
+                                    onClick={() => openEditAntena(a)}
+                                    className="p-1.5 text-slate-400 hover:text-[#1e4786] hover:bg-slate-100 rounded-lg transition-colors"
+                                    title="Editar antena"
+                                  >
+                                    <Edit3 size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteAntena(a)}
+                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Eliminar antena"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       </main>
@@ -572,14 +557,14 @@ export default function MantenedorPage() {
 
       {/* Modal Reader */}
       <Modal
-        isOpen={modalMode !== null && tab === "readers"}
-        onClose={() => setModalMode(null)}
-        title={modalMode === "create" ? "Registrar Nuevo Reader" : "Editar Reader"}
+        isOpen={readerModal !== null}
+        onClose={() => setReaderModal(null)}
+        title={readerModal === "create" ? "Registrar Nuevo Reader" : "Editar Reader"}
         size="md"
         footer={
           <>
             <button
-              onClick={() => setModalMode(null)}
+              onClick={() => setReaderModal(null)}
               className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700 transition-colors"
             >
               Cancelar
@@ -590,7 +575,7 @@ export default function MantenedorPage() {
               className="flex items-center gap-2 px-4 py-2 bg-[#22c4a1] text-white text-sm font-bold rounded-lg hover:brightness-105 disabled:opacity-50 transition-all"
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              {saving ? "Guardando..." : modalMode === "create" ? "Registrar" : "Actualizar"}
+              {saving ? "Guardando..." : readerModal === "create" ? "Registrar" : "Actualizar"}
             </button>
           </>
         }
@@ -627,14 +612,14 @@ export default function MantenedorPage() {
 
       {/* Modal Antena */}
       <Modal
-        isOpen={modalMode !== null && tab === "antenas"}
-        onClose={() => setModalMode(null)}
-        title={modalMode === "create" ? "Registrar Nueva Antena" : "Editar Antena"}
+        isOpen={antenaModal !== null}
+        onClose={() => setAntenaModal(null)}
+        title={antenaModal === "create" ? "Nueva Antena" : "Editar Antena"}
         size="md"
         footer={
           <>
             <button
-              onClick={() => setModalMode(null)}
+              onClick={() => setAntenaModal(null)}
               className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700 transition-colors"
             >
               Cancelar
@@ -645,31 +630,17 @@ export default function MantenedorPage() {
               className="flex items-center gap-2 px-4 py-2 bg-[#22c4a1] text-white text-sm font-bold rounded-lg hover:brightness-105 disabled:opacity-50 transition-all"
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              {saving ? "Guardando..." : modalMode === "create" ? "Registrar" : "Actualizar"}
+              {saving ? "Guardando..." : antenaModal === "create" ? "Registrar" : "Actualizar"}
             </button>
           </>
         }
       >
         <div className="space-y-4">
-          <Field label="Reader *">
-            <select
-              className="w-full p-2.5 border border-slate-200 rounded-lg text-sm font-mono focus:border-[#22c4a1] outline-none transition-all bg-slate-50 disabled:opacity-60"
-              value={antenaForm.ip_reader}
-              onChange={(e) => setAntenaForm((p) => ({ ...p, ip_reader: e.target.value }))}
-              disabled={readerList.length === 0}
-            >
-              {readerList.length === 0 && <option value="">— Sin readers registrados —</option>}
-              {readerList.map((r) => (
-                <option key={r.id} value={r.ip}>
-                  {r.ip}{r.descripcion ? ` · ${r.descripcion}` : ""}
-                </option>
-              ))}
-            </select>
-            {readerList.length === 0 && (
-              <p className="text-[11px] text-amber-600 mt-1 flex items-center gap-1">
-                <AlertCircle size={12} /> Registra un reader antes de crear antenas.
-              </p>
-            )}
+          {/* Reader fijo: la antena pertenece a este reader, no se elige a mano */}
+          <Field label="Reader">
+            <div className="w-full p-2.5 border border-slate-200 rounded-lg text-sm font-mono bg-slate-100 text-slate-600 flex items-center gap-2">
+              <Server size={14} className="text-slate-400" /> {antenaForm.ip_reader || "—"}
+            </div>
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="N° Antena">
@@ -697,7 +668,7 @@ export default function MantenedorPage() {
               className="w-full p-2.5 border border-slate-200 rounded-lg text-sm focus:border-[#22c4a1] outline-none transition-all"
               value={antenaForm.descripcion}
               onChange={(e) => setAntenaForm((p) => ({ ...p, descripcion: e.target.value }))}
-              placeholder="Descripción de la antena"
+              placeholder="Descripción de la antena (ej. Puerta entrada)"
             />
           </Field>
           <Field label="Estado">
@@ -734,36 +705,12 @@ export default function MantenedorPage() {
   );
 }
 
-// ── Helpers UI ──
+// ── Helper UI ──
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
       <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{label}</label>
       {children}
     </div>
-  );
-}
-
-function LoadingRow({ cols, label }: { cols: number; label: string }) {
-  return (
-    <tr>
-      <td colSpan={cols} className="py-20 text-center">
-        <Loader2 size={32} className="animate-spin text-[#22c4a1] mx-auto" />
-        <p className="text-sm text-slate-400 mt-2">{label}</p>
-      </td>
-    </tr>
-  );
-}
-
-function EmptyRow({ cols, icon, empty }: { cols: number; icon: React.ReactNode; empty: boolean }) {
-  return (
-    <tr>
-      <td colSpan={cols} className="py-20 text-center text-slate-400">
-        <div className="flex flex-col items-center gap-2 opacity-40">
-          {icon}
-          <p className="font-medium">{empty ? "No hay registros" : "No se encontraron resultados"}</p>
-        </div>
-      </td>
-    </tr>
   );
 }
