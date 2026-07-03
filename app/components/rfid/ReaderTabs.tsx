@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Wifi, WifiOff, Loader2, LogOut } from "lucide-react";
+import { DisconnectModal } from "./DisconnectModal";
 import type { ReaderConfig, ReaderRuntimeState, ReaderStatus } from "../../../types/rfid";
 
 const STATUS_DOT: Record<ReaderStatus, string> = {
@@ -44,15 +45,17 @@ export function ReaderTabs({
   mockMode,
 }: ReaderTabsProps) {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [showModalId, setShowModalId] = useState<string | null>(null);
 
-  const handleDisconnectClick = async (readerId: string) => {
-    if (window.confirm("¿Estás seguro de que deseas desconectar este reader?")) {
-      setDisconnectingId(readerId);
-      try {
-        await onDisconnect(readerId);
-      } finally {
-        setDisconnectingId(null);
-      }
+  const handleConfirmDisconnect = async () => {
+    if (!showModalId) return;
+    const id = showModalId;
+    setShowModalId(null);
+    setDisconnectingId(id);
+    try {
+      await onDisconnect(id);
+    } finally {
+      setDisconnectingId(null);
     }
   };
 
@@ -141,7 +144,7 @@ export function ReaderTabs({
                 </button>
               ) : isConnected ? (
                 <button
-                  onClick={() => handleDisconnectClick(reader.id)}
+                  onClick={() => setShowModalId(reader.id)}
                   disabled={disconnectingId === reader.id}
                   className="flex items-center gap-2 border-2 border-red-200 text-red-500 px-5 py-2 rounded-xl text-xs font-bold hover:bg-red-50 transition-all disabled:opacity-50"
                 >
@@ -157,6 +160,13 @@ export function ReaderTabs({
           </div>
         );
       })()}
+
+      <DisconnectModal
+        isOpen={!!showModalId}
+        onClose={() => setShowModalId(null)}
+        onConfirm={handleConfirmDisconnect}
+        readerName={readers.find(r => r.id === showModalId)?.name || "Reader"}
+      />
     </div>
   );
 }
