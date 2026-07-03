@@ -5,8 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useApp } from "../../context/AppContext";
-import { ExitConfirmationModal } from "./ExitConfirmationModal";
-
 interface NavbarProps {
   readersCount: number;
   mockMode: boolean;
@@ -27,31 +25,10 @@ export function Navbar({ readersCount, mockMode, logsCount, onOpenLogs, onOpenCo
   const router = useRouter();
   const { readerStates, stopPolling } = useApp();
 
-  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
-
-  // Un reader está "activo" si está conectado o leyendo
-  const isAnyReaderActive = Object.values(readerStates).some(
-    (s) => s.status === "connected" || s.status === "reading"
-  );
-
   const handleNavClick = (e: React.MouseEvent, href: string) => {
     e.preventDefault();
     if (pathname === href) return;
-
-    if (isAnyReaderActive) {
-      setPendingUrl(href);
-    } else {
-      router.push(href);
-    }
-  };
-
-  const handleConfirmExit = async () => {
-    if (pendingUrl) {
-      const target = pendingUrl;
-      setPendingUrl(null);
-      await stopPolling(); // Esto detiene el polling y desconecta todos los readers activos
-      router.push(target);
-    }
+    router.push(href);
   };
 
   return (
@@ -141,11 +118,6 @@ export function Navbar({ readersCount, mockMode, logsCount, onOpenLogs, onOpenCo
         </button>
       </div>
 
-      <ExitConfirmationModal 
-        isOpen={!!pendingUrl} 
-        onClose={() => setPendingUrl(null)} 
-        onConfirm={handleConfirmExit}
-      />
     </nav>
   );
 }

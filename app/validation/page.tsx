@@ -159,6 +159,26 @@ export default function ValidationPage() {
 
   // ── Start validation (connect + read) ──
   const [connecting, setConnecting] = useState(false);
+  
+  // Auto-start y Auto-stop si el reader cambia de estado globalmente
+  useEffect(() => {
+    if (!readerIp) return;
+    const id = getReaderIdByIp(readerIp);
+    const status = id ? readerStates[id]?.status : null;
+    
+    if (status === "connected" || status === "reading") {
+      if (!validating && !connecting) {
+        addLog(`Reader ${readerIp} detectado como activo. Iniciando validación automática...`, "success");
+        setValidating(true);
+        setHasValidated(true);
+      }
+    } else if (status === "disconnected" || status === "error") {
+      if (validating) {
+        addLog(`Reader ${readerIp} desconectado globalmente. Deteniendo validación.`, "info");
+        setValidating(false);
+      }
+    }
+  }, [readerIp, readerStates, validating, connecting, addLog]);
   const handleStartValidation = async () => {
     if (globalConfig.mockMode) {
       addLog("La validación requiere conexión a la API real", "error");
@@ -213,14 +233,7 @@ export default function ValidationPage() {
     addLog("Lista de lecturas limpiada", "info");
   };
 
-  // ── Auto-cleanup on unmount ──
-  useEffect(() => {
-    return () => {
-      // Intentamos detener todo al salir de la ruta como medida de seguridad extra
-      stopPolling();
-      syncGlobalStatus("disconnected");
-    };
-  }, [stopPolling, syncGlobalStatus]);
+  // (Eliminado el auto-cleanup de unmount para permitir persistencia de estado entre tabs)
 
   // ── Stats ──
   const totalEsperados = parseInt(cantidadRecep) || 0;

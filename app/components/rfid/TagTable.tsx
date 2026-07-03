@@ -151,7 +151,7 @@ export function TagTable({
                 const registered = registeredTags?.get(tag.tagid);
                 return (
                   <tr
-                    key={tag.tagid}
+                    key={`${tag.tagid}-${tag.antena}-${idx}`}
                     className={`group transition-all duration-300 ${
                       isNew
                         ? "bg-emerald-50/40 border-l-2 border-l-emerald-400"

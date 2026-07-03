@@ -80,14 +80,7 @@ export default function RFIDMonitor() {
     addLog(`Lista de ${reader.name} limpiada`, "info");
   }, [activeReaderId, addLog, updateReaderState, readersRef, globalConfigRef, tokenRef]);
 
-  // ── Auto-cleanup on unmount ──
-  useEffect(() => {
-    return () => {
-      // Intentamos detener todo al salir de la ruta como medida de seguridad extra
-      stopPolling();
-    };
-  }, [stopPolling]);
-
+  // (Eliminado el auto-cleanup de unmount para no interferir con Strict Mode y mantener estado persistente)
   // ── Register tag from live reading ──
   const handleRegisterTag = (tagId: string) => {
     setRegisterTagId(tagId);

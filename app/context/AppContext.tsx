@@ -131,6 +131,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [activeAntennaNum, setActiveAntennaNum] = useState<number | null>(null);
   const [loadingReaders, setLoadingReaders] = useState(false);
 
+  // ── Polling State ──
+  const [polling, setPolling] = useState(false);
+  const pollingRef = useRef(false);
+  useEffect(() => { pollingRef.current = polling; }, [polling]);
+
   // Refs
   const readersRef = useRef(readers);
   const readerStatesRef = useRef(readerStates);
@@ -172,18 +177,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Consultar el estado activo de multiinstancias
       try {
         const activeInstances = await rfidService.getStatus(cfg.baseUrl, t, cfg.mockMode);
+        addLog(`Status devuelto: ${JSON.stringify(activeInstances)}`, "info");
+        
+        // Calculamos synchronously si hay alguna instancia activa
+        const anyActive = mapped.some((r) => {
+          const instance = activeInstances.find((i: any) => (i.IP || i.ip) === r.ip);
+          return instance && String(instance.Activo || instance.activo) === "1";
+        });
+        
         setReaderStates((prev) => {
           const next = { ...prev };
           mapped.forEach((r) => {
-            const instance = activeInstances.find((i) => i.IP === r.ip);
-            if (instance && instance.Activo === "1") {
-              next[r.id] = { ...(next[r.id] ?? DEFAULT_READER_STATE), status: "connected" };
+            const instance = activeInstances.find((i: any) => (i.IP || i.ip) === r.ip);
+            
+            if (instance) {
+              const activoValue = String(instance.Activo || instance.activo);
+              if (activoValue === "1") {
+                next[r.id] = { ...(next[r.id] ?? DEFAULT_READER_STATE), status: "connected" };
+              } else {
+                next[r.id] = { ...(next[r.id] ?? DEFAULT_READER_STATE), status: "disconnected" };
+              }
             } else if (!next[r.id] || next[r.id].status !== "disconnected") {
               next[r.id] = { ...(next[r.id] ?? DEFAULT_READER_STATE), status: "disconnected" };
             }
           });
           return next;
         });
+        
+        if (anyActive) {
+          addLog("Iniciando lectura automática para instancias activas", "success");
+          setPolling(true);
+        }
       } catch (e: unknown) {
         addLog(`Error consultando estado de instancias: ${(e as Error).message}`, "error");
       }
@@ -227,6 +251,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await rfidService.connect(cfg.baseUrl, tokenRef.current, reader.ip, 0, cfg.mockMode);
       updateReaderState(readerId, () => ({ status: "connected" }));
       addLog(`${reader.name} conectado`, "success");
+      
+      // Iniciar lectura automática al conectar un nuevo reader
+      setPolling(true);
     } catch (e: unknown) {
       updateReaderState(readerId, () => ({ status: "error" }));
       addLog(`Error conectando ${reader.name}: ${(e as Error).message}`, "error");
@@ -240,8 +267,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const cfg = globalConfigRef.current;
       await rfidService.disconnect(cfg.baseUrl, tokenRef.current, reader.ip, cfg.mockMode);
     } catch { /* ignorar */ }
+    
     updateReaderState(readerId, () => ({ status: "disconnected", tags: [], newTagIds: [], scanCount: 0, lastUpdate: null }));
     addLog(`${reader.name} desconectado`, "info");
+    
+    // Si ya no queda ningún reader activo, apagamos el botón de lectura general
+    const anyOtherActive = readersRef.current.some((r) => {
+      if (r.id === readerId) return false;
+      const s = readerStatesRef.current[r.id]?.status;
+      return s === "connected" || s === "reading";
+    });
+    
+    if (!anyOtherActive) {
+      setPolling(false);
+      addLog("Lectura en tiempo real detenida automáticamente (no hay readers activos)", "info");
+    }
   }, [addLog, updateReaderState]);
 
   const handleTestReader = useCallback(async (readerId: string): Promise<{ ok: boolean; latencyMs: number }> => {
@@ -271,11 +311,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [addLog]);
 
-  // ── Polling ──
-
-  const [polling, setPolling] = useState(false);
-  const pollingRef = useRef(false);
-  useEffect(() => { pollingRef.current = polling; }, [polling]);
+  // ── Polling Actions ──
 
   const pollAllReaders = useCallback(async () => {
     const currentReaders = readersRef.current;
@@ -301,6 +337,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
           setReaderStates((prev) => {
             const cur = prev[reader.id] ?? DEFAULT_READER_STATE;
+            
+            // Protección contra Race Condition: 
+            // Si el usuario desconectó el reader mientras esperábamos el API, abortamos
+            if (cur.status === "disconnected" || cur.status === "error") {
+              return prev;
+            }
+
             return {
               ...prev,
               [reader.id]: {
