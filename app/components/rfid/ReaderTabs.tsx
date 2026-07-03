@@ -1,6 +1,7 @@
 "use client";
 
-import { Wifi, WifiOff, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { Wifi, WifiOff, Loader2, LogOut } from "lucide-react";
 import type { ReaderConfig, ReaderRuntimeState, ReaderStatus } from "../../../types/rfid";
 
 const STATUS_DOT: Record<ReaderStatus, string> = {
@@ -42,6 +43,19 @@ export function ReaderTabs({
   token,
   mockMode,
 }: ReaderTabsProps) {
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+
+  const handleDisconnectClick = async (readerId: string) => {
+    if (window.confirm("¿Estás seguro de que deseas desconectar este reader?")) {
+      setDisconnectingId(readerId);
+      try {
+        await onDisconnect(readerId);
+      } finally {
+        setDisconnectingId(null);
+      }
+    }
+  };
+
   return (
     <div className="border-b border-slate-200">
       {/* Tabs */}
@@ -127,10 +141,16 @@ export function ReaderTabs({
                 </button>
               ) : isConnected ? (
                 <button
-                  onClick={() => onDisconnect(reader.id)}
-                  className="flex items-center gap-2 border-2 border-red-200 text-red-500 px-5 py-2 rounded-xl text-xs font-bold hover:bg-red-50 transition-all"
+                  onClick={() => handleDisconnectClick(reader.id)}
+                  disabled={disconnectingId === reader.id}
+                  className="flex items-center gap-2 border-2 border-red-200 text-red-500 px-5 py-2 rounded-xl text-xs font-bold hover:bg-red-50 transition-all disabled:opacity-50"
                 >
-                  <WifiOff size={14} /> Desconectar
+                  {disconnectingId === reader.id ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <WifiOff size={14} />
+                  )}
+                  {disconnectingId === reader.id ? "Desconectando..." : "Desconectar"}
                 </button>
               ) : null}
             </div>
