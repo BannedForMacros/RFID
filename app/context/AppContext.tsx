@@ -168,6 +168,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (aRes.codigo !== 1) addLog(`Error listando antenas: ${aRes.mensaje}`, "error");
       const mapped = mapToReaderConfigs(rRes.listareader ?? [], aRes.antenas ?? []);
       setReaders(mapped);
+      
+      // Consultar el estado activo de multiinstancias
+      try {
+        const activeInstances = await rfidService.getStatus(cfg.baseUrl, t, cfg.mockMode);
+        setReaderStates((prev) => {
+          const next = { ...prev };
+          mapped.forEach((r) => {
+            const instance = activeInstances.find((i) => i.IP === r.ip);
+            if (instance && instance.Activo === "1") {
+              next[r.id] = { ...(next[r.id] ?? DEFAULT_READER_STATE), status: "connected" };
+            } else if (!next[r.id] || next[r.id].status !== "disconnected") {
+              next[r.id] = { ...(next[r.id] ?? DEFAULT_READER_STATE), status: "disconnected" };
+            }
+          });
+          return next;
+        });
+      } catch (e: unknown) {
+        addLog(`Error consultando estado de instancias: ${(e as Error).message}`, "error");
+      }
+
       setActiveReaderId((prev) =>
         prev && mapped.some((r) => r.id === prev) ? prev : mapped[0]?.id ?? ""
       );
@@ -204,8 +224,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addLog(`Conectando ${reader.name} (${reader.ip})...`, "info");
     try {
       const cfg = globalConfigRef.current;
-      const maxPotencia = Math.max(...reader.antenas.map((a) => a.potencia));
-      await rfidService.connect(cfg.baseUrl, tokenRef.current, reader.ip, maxPotencia, cfg.mockMode);
+      await rfidService.connect(cfg.baseUrl, tokenRef.current, reader.ip, 0, cfg.mockMode);
       updateReaderState(readerId, () => ({ status: "connected" }));
       addLog(`${reader.name} conectado`, "success");
     } catch (e: unknown) {

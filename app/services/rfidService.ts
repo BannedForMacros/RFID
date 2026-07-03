@@ -50,8 +50,8 @@ export const rfidService = {
       headers: getHeaders(token),
       body: JSON.stringify({
         ipreader: ip,
-        potenciaDbm,
-        tlectura: 0,
+        potenciaDbm: 0, // Según documentación enviar en cero
+        tlectura: 0,    // Según documentación enviar en cero
       }),
     });
   },
@@ -61,11 +61,22 @@ export const rfidService = {
       await mockApi.disconnect(ip);
       return;
     }
-    await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.disconnect), {
+    await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.disconnect(ip)), {
       method: "POST",
       headers: getHeaders(token),
-      body: JSON.stringify({ ipreader: ip }),
     });
+  },
+
+  async getStatus(baseUrl: string, token: string, mockMode: boolean): Promise<{ IP: string; Activo: string }[]> {
+    if (mockMode) {
+      // Mock simple que asume que no hay activos por defecto (el mock de connect/disconnect maneja estado en local)
+      return [];
+    }
+    const data = await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.status), {
+      method: "GET",
+      headers: getHeaders(token),
+    });
+    return Array.isArray(data) ? data : [];
   },
 
   async testConnection(

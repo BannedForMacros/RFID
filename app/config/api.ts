@@ -3,10 +3,11 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "https://localhost:7019";
 
 export const API_ENDPOINTS = {
-  // RFID Reader
+  // Conexión y lectura
   generateToken: (dias: number) => `/api/Rfid/generate-token?dias=${dias}`,
-  connect: "/api/Rfid/connect",
-  disconnect: "/api/Rfid/disconnect",
+  connect: "/api/Rfid/connect_M", // Nuevo método connect para multiinstancias
+  disconnect: (ip: string) => `/api/Rfid/disconnect_m?ip=${ip}`, // Nuevo método disconnect para multiinstancias
+  status: "/api/Rfid/status", // Nuevo método para listar instancias activas
   listaLecturas: "/api/Rfid/listaActualizaLecturas",
 
   // Mantenimiento de Tags
