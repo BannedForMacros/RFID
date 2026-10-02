@@ -2,25 +2,37 @@ import { API_ENDPOINTS, buildUrl, getHeaders } from "../config/api";
 import { mockApi } from "../lib/mockApi";
 import type { Tag } from "../../types/rfid";
 
-async function apiFetch(url: string, options: RequestInit = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "ngrok-skip-browser-warning": "true",
-      ...(options.headers as Record<string, string>),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HTTP ${res.status}: ${text}`);
-  }
-  // Handle 204 No Content or empty body
-  const text = await res.text();
-  if (!text) return {};
+async function apiFetch(url: string, options: RequestInit = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return JSON.parse(text);
-  } catch {
-    return {};
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "ngrok-skip-browser-warning": "true",
+        ...(options.headers as Record<string, string>),
+      },
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    // Handle 204 No Content or empty body
+    const text = await res.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (err.name === "AbortError") {
+      throw new Error("Tiempo de espera agotado (timeout). El dispositivo no respondó.");
+    }
+    throw err;
   }
 }
 
@@ -48,12 +60,8 @@ export const rfidService = {
     await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.connect), {
       method: "POST",
       headers: getHeaders(token),
-      body: JSON.stringify({
-        ipreader: ip,
-        potenciaDbm: 0, // Según documentación enviar en cero
-        tlectura: 0,    // Según documentación enviar en cero
-      }),
-    });
+      body: JSON.stringify({ ipreader: ip }),
+    }, 12000); // 12s timeout: el hardware RFID puede tardar en responder
   },
 
   async disconnect(baseUrl: string, token: string, ip: string, mockMode: boolean): Promise<void> {
@@ -64,6 +72,7 @@ export const rfidService = {
     await apiFetch(buildUrl(baseUrl, API_ENDPOINTS.disconnect(ip)), {
       method: "POST",
       headers: getHeaders(token),
+      body: JSON.stringify({ ipreader: ip }),
     });
   },
 

@@ -7,6 +7,7 @@ import {
   CheckCircle, AlertCircle, Loader2,
   FlaskConical, ToggleLeft, ToggleRight, Radio, Zap,
 } from "lucide-react";
+import { normalizeBaseUrl } from "../config/api";
 import type {
   GlobalConfig,
   ReaderConfig,
@@ -132,9 +133,9 @@ export const ConfigModal = ({
                 className="w-full p-2 border border-slate-200 rounded-lg text-sm font-mono focus:border-[#22c4a1] outline-none transition-all"
                 value={globalConfig.baseUrl}
                 onChange={(e) =>
-                  setGlobalConfig({ ...globalConfig, baseUrl: e.target.value.replace(/\/$/, "") })
+                  setGlobalConfig({ ...globalConfig, baseUrl: normalizeBaseUrl(e.target.value) })
                 }
-                placeholder="https://abc123.ngrok.io"
+                placeholder="http://192.168.10.2:9598"
               />
             </div>
           )}

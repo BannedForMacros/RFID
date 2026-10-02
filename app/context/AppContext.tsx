@@ -58,6 +58,22 @@ function mapToReaderConfigs(readers: ReaderMante[], antenas: AntenaMante[]): Rea
     });
 }
 
+// ── Vencimiento del token ──
+const TOKEN_KEY = "rfid_token";
+const TOKEN_EXP_KEY = "rfid_token_exp";
+
+/** Lee el `exp` del token si es un JWT; devuelve ms epoch o null. */
+function jwtExpiration(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Context interface ──
 
 interface AppContextValue {
@@ -106,12 +122,72 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   // ── Global config ──
-  const [globalConfig, setGlobalConfig] = useState<GlobalConfig>({
-    baseUrl: DEFAULT_BASE_URL, // viene de NEXT_PUBLIC_API_BASE_URL (.env.local)
+  const [globalConfig, setGlobalConfigState] = useState<GlobalConfig>({
+    baseUrl: DEFAULT_BASE_URL,
     dias: 1,
-    mockMode: false, // hay API real disponible
+    mockMode: false,
   });
-  const [token, setToken] = useState("");
+  const [token, setTokenState] = useState("");
+  // Momento (ms epoch) en que vence el token; null si no se conoce.
+  const [tokenExpiresAt, setTokenExpiresAt] = useState<number | null>(null);
+  // true cuando ya se leyó localStorage; hasta entonces no se consulta el backend
+  // para no hacerlo sin token tras recargar la página.
+  const [storageLoaded, setStorageLoaded] = useState(false);
+
+  // Cargar config y token guardados al iniciar
+  useEffect(() => {
+    try {
+      const savedConfig = localStorage.getItem("rfid_globalConfig");
+      if (savedConfig) {
+        // El modo simulación no se restaura: si quedó guardado en true, la app
+        // mostraría los readers de prueba de mockApi en lugar de los reales.
+        setGlobalConfigState({ ...JSON.parse(savedConfig), mockMode: false });
+      }
+      const savedToken = localStorage.getItem(TOKEN_KEY);
+      if (savedToken) {
+        const savedExp = Number(localStorage.getItem(TOKEN_EXP_KEY)) || jwtExpiration(savedToken);
+        if (savedExp && savedExp <= Date.now()) {
+          // Venció mientras la app estaba cerrada: se descarta
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(TOKEN_EXP_KEY);
+        } else {
+          setTokenState(savedToken);
+          setTokenExpiresAt(savedExp || null);
+        }
+      }
+    } catch { /* storage bloqueado o JSON inválido */ }
+    setStorageLoaded(true);
+  }, []);
+
+  // Envolver setters para guardar siempre en localStorage
+  const setGlobalConfig = useCallback((val: React.SetStateAction<GlobalConfig>) => {
+    setGlobalConfigState((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      localStorage.setItem("rfid_globalConfig", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const setToken = useCallback((val: React.SetStateAction<string>) => {
+    setTokenState((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      try {
+        if (next) localStorage.setItem(TOKEN_KEY, next);
+        else localStorage.removeItem(TOKEN_KEY);
+      } catch { /* storage bloqueado */ }
+      return next;
+    });
+  }, []);
+
+  /** Guarda el token junto con su vencimiento (null = sin vencimiento conocido). */
+  const saveToken = useCallback((t: string, expiresAt: number | null) => {
+    setToken(t);
+    setTokenExpiresAt(t ? expiresAt : null);
+    try {
+      if (t && expiresAt) localStorage.setItem(TOKEN_EXP_KEY, String(expiresAt));
+      else localStorage.removeItem(TOKEN_EXP_KEY);
+    } catch { /* storage bloqueado */ }
+  }, [setToken]);
 
   // ── Logs ──
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -122,6 +198,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const clearLogs = useCallback(() => setLogs([]), []);
   const addLogRef = useRef(addLog);
   useEffect(() => { addLogRef.current = addLog; }, [addLog]);
+
+  // Descarta el token cuando vence con la app abierta. Se revisa cada minuto
+  // (en vez de un único setTimeout) para cubrir suspensión del equipo y
+  // vencimientos lejanos que exceden el máximo de setTimeout.
+  useEffect(() => {
+    if (!token || !tokenExpiresAt) return;
+    const check = () => {
+      if (Date.now() >= tokenExpiresAt) {
+        saveToken("", null);
+        addLog("El token venció. Genera uno nuevo desde Configuración.", "error");
+      }
+    };
+    check();
+    const id = setInterval(check, 60_000);
+    return () => clearInterval(id);
+  }, [token, tokenExpiresAt, saveToken, addLog]);
 
   // ── Readers ──
   // Nada hardcodeado: la lista se carga desde los mantenedores (ver loadReaders).
@@ -181,14 +273,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         
         // Calculamos synchronously si hay alguna instancia activa
         const anyActive = mapped.some((r) => {
-          const instance = activeInstances.find((i: any) => (i.IP || i.ip) === r.ip);
+          const instance: any = activeInstances.find((i: any) => (i.IP || i.ip) === r.ip);
           return instance && String(instance.Activo || instance.activo) === "1";
         });
         
         setReaderStates((prev) => {
           const next = { ...prev };
           mapped.forEach((r) => {
-            const instance = activeInstances.find((i: any) => (i.IP || i.ip) === r.ip);
+            const instance: any = activeInstances.find((i: any) => (i.IP || i.ip) === r.ip);
             
             if (instance) {
               const activoValue = String(instance.Activo || instance.activo);
@@ -197,9 +289,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               } else {
                 next[r.id] = { ...(next[r.id] ?? DEFAULT_READER_STATE), status: "disconnected" };
               }
-            } else if (!next[r.id] || next[r.id].status !== "disconnected") {
+            } else if (activeInstances.length > 0) {
+              // Solo marcamos desconectado si el backend respondió con datos pero este reader no está en la lista
               next[r.id] = { ...(next[r.id] ?? DEFAULT_READER_STATE), status: "disconnected" };
             }
+            // Si activeInstances está vacío (sin token o sin datos), dejamos el status actual
           });
           return next;
         });
@@ -226,10 +320,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [addLog]);
 
-  // Cargar al iniciar y cuando cambian token / modo / URL base.
+  // Cargar al iniciar y cuando cambian modo / URL base.
+  // IMPORTANTE: No dependemos de `token` directamente para evitar
+  // doble llamada: primero con token="" (vacío) y después con el real.
+  // En su lugar usamos tokenRef que siempre tiene el valor actualizado.
   useEffect(() => {
-    loadReaders();
-  }, [loadReaders, token, globalConfig.mockMode, globalConfig.baseUrl]);
+    if (storageLoaded) loadReaders();
+  }, [loadReaders, storageLoaded, globalConfig.mockMode, globalConfig.baseUrl]);
+
+  // ── Lecturas previas del reader seleccionado ──
+  // Al cambiar de reader se consultan las lecturas que ya tiene el backend,
+  // aunque el reader no esté conectado. Si está leyendo, el polling ya se encarga.
+  const loadReaderReadings = useCallback(async (readerId: string) => {
+    const reader = readersRef.current.find((r) => r.id === readerId);
+    if (!reader) return;
+    const { baseUrl, mockMode } = globalConfigRef.current;
+    const t = tokenRef.current;
+    if (!t && !mockMode) return;
+    const s = readerStatesRef.current[readerId]?.status;
+    if (s === "reading" || s === "connecting") return;
+    try {
+      const antenasNums = reader.antenas.map((a) => a.numero);
+      const lista = await rfidService.listReadings(baseUrl, t, reader.ip, antenasNums, mockMode);
+      setReaderStates((prev) => {
+        const cur = prev[readerId] ?? DEFAULT_READER_STATE;
+        // Si mientras tanto empezó a leer, manda el polling
+        if (cur.status === "reading") return prev;
+        return {
+          ...prev,
+          [readerId]: {
+            ...cur,
+            tags: lista,
+            newTagIds: [],
+            lastUpdate: new Date().toLocaleTimeString("es-PE", { hour12: false }),
+          },
+        };
+      });
+    } catch (e: unknown) {
+      addLog(`[${reader.name}] Error cargando lecturas: ${(e as Error).message}`, "error");
+    }
+  }, [addLog]);
+
+  useEffect(() => {
+    if (activeReaderId) loadReaderReadings(activeReaderId);
+  }, [activeReaderId, readers, token, loadReaderReadings]);
 
   // ── Connect / Disconnect ──
 
@@ -263,13 +397,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const handleDisconnect = useCallback(async (readerId: string) => {
     const reader = readersRef.current.find((r) => r.id === readerId);
     if (!reader) return;
-    try {
-      const cfg = globalConfigRef.current;
-      await rfidService.disconnect(cfg.baseUrl, tokenRef.current, reader.ip, cfg.mockMode);
-    } catch { /* ignorar */ }
-    
+
+    // 1. Actualizar la UI inmediatamente a "desconectado" para que no parezca que está "colgado"
     updateReaderState(readerId, () => ({ status: "disconnected", tags: [], newTagIds: [], scanCount: 0, lastUpdate: null }));
-    addLog(`${reader.name} desconectado`, "info");
+    addLog(`${reader.name} desconectado (enviando orden al backend...)`, "info");
+    
+    // 2. Enviar la petición al backend en segundo plano (sin await) porque el hardware a veces demora 20 segundos en responder si está offline
+    const cfg = globalConfigRef.current;
+    rfidService.disconnect(cfg.baseUrl, tokenRef.current, reader.ip, cfg.mockMode)
+      .then(() => addLog(`${reader.name}: Orden de apagado confirmada por el backend.`, "success"))
+      .catch(() => { /* ignorar timeout del backend */ });
+    
     
     // Si ya no queda ningún reader activo, apagamos el botón de lectura general
     const anyOtherActive = readersRef.current.some((r) => {
@@ -304,12 +442,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addLog("Generando token...", "info");
       const cfg = globalConfigRef.current;
       const t = await rfidService.generateToken(cfg.baseUrl, cfg.dias, cfg.mockMode);
-      setToken(t);
+      // Preferimos el `exp` del propio token; si no es JWT, lo calculamos por días
+      saveToken(t, jwtExpiration(t) ?? Date.now() + cfg.dias * 24 * 60 * 60 * 1000);
       addLog(`Token generado (${cfg.dias} día${cfg.dias !== 1 ? "s" : ""})`, "success");
     } catch (e: unknown) {
       addLog(`Error token: ${(e as Error).message}`, "error");
     }
-  }, [addLog]);
+  }, [addLog, saveToken]);
 
   // ── Polling Actions ──
 

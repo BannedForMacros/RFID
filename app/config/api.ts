@@ -21,8 +21,20 @@ export const API_ENDPOINTS = {
   validaRecepcion: "/api/Rfid/ValidaRecepcion",
 } as const;
 
+/**
+ * Normaliza la URL base del backend. Elimina barras finales y el sufijo
+ * `/api/Rfid` si el usuario lo escribió por error, ya que los endpoints ya
+ * lo incluyen.
+ */
+export function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl
+    .trim()
+    .replace(/\/$/, "")
+    .replace(/\/api\/Rfid$/i, "");
+}
+
 export function buildUrl(baseUrl: string, endpoint: string): string {
-  return `${baseUrl.replace(/\/$/, "")}${endpoint}`;
+  return `${normalizeBaseUrl(baseUrl)}${endpoint}`;
 }
 
 export const DEFAULT_BASE_URL = API_BASE;

@@ -45,12 +45,8 @@ export function ReaderTabs({
   mockMode,
 }: ReaderTabsProps) {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
-  const [showModalId, setShowModalId] = useState<string | null>(null);
 
-  const handleConfirmDisconnect = async () => {
-    if (!showModalId) return;
-    const id = showModalId;
-    setShowModalId(null);
+  const handleDisconnectClick = async (id: string) => {
     setDisconnectingId(id);
     try {
       await onDisconnect(id);
@@ -144,7 +140,7 @@ export function ReaderTabs({
                 </button>
               ) : isConnected ? (
                 <button
-                  onClick={() => setShowModalId(reader.id)}
+                  onClick={() => handleDisconnectClick(reader.id)}
                   disabled={disconnectingId === reader.id}
                   className="flex items-center gap-2 border-2 border-red-200 text-red-500 px-5 py-2 rounded-xl text-xs font-bold hover:bg-red-50 transition-all disabled:opacity-50"
                 >
@@ -161,12 +157,6 @@ export function ReaderTabs({
         );
       })()}
 
-      <DisconnectModal
-        isOpen={!!showModalId}
-        onClose={() => setShowModalId(null)}
-        onConfirm={handleConfirmDisconnect}
-        readerName={readers.find(r => r.id === showModalId)?.name || "Reader"}
-      />
     </div>
   );
 }
